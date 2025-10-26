@@ -1,0 +1,305 @@
+name: "JMeter Load Test (Multi-Runner)"
+
+run-name: >
+  JMeter Workflow: ${{ github.event.inputs.test_name }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: "Choose test type (e.g., load/cleanup)"
+        required: true
+        type: choice
+        options:
+          - load
+          - cleanup
+      runners_to_use:
+        description: "Number of parallel runners to use (1–4)"
+        required: true
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+      test_name:
+        description: "Optional test name; if blank, YYYYMMDDHHMM will be used"
+        required: false
+        default: ""
+      monitor_system:
+        description: "Monitor runner CPU/memory usage during test? true/false"
+        required: false
+        type: choice
+        options:
+          - "true"
+          - "false"
+        default: "false"
+      cleanup_days:
+        description: "Delete reports older than X days (cleanup mode)"
+        required: false
+        default: "7"
+      print_machine_info:
+        description: "Set true to print machine details"
+        required: false
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+env:
+  JMETER_VERSION: "5.6.3"
+  SCRIPTS_DIR: "./scripts"
+  REPORT_DIR: "./jmeter-results"
+
+# =========================================================
+# Job 1: Determine final test name
+# =========================================================
+jobs:
+  set-test-name:
+    runs-on: ubuntu-latest
+    outputs:
+      final_test_name: ${{ steps.determine.outputs.final_test_name }}
+
+    steps:
+      - id: determine
+        run: |
+          # If test_name provided, use it; otherwise fallback to timestamp
+          if [ -n "${{ github.event.inputs.test_name }}" ]; then
+            NAME="${{ github.event.inputs.test_name }}"
+          else
+            NAME=$(date +%Y%m%d%H%M)
+          fi
+
+          # Sanitize: replace any special characters with underscores
+          SAFE_NAME=$(echo "$NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
+
+          # Export for downstream jobs
+          echo "final_test_name=$SAFE_NAME" >> $GITHUB_OUTPUT
+          echo "✅ Test name set to: $SAFE_NAME"
+
+# =========================================================
+# Job 2: Run JMeter (multi-runner)
+# =========================================================
+  run-jmeter:
+    needs: set-test-name
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runner_index: [1,2,3,4]
+
+    steps:
+      # -------------------------------
+      # Checkout repo
+      # -------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # -------------------------------
+      # Print machine info if requested
+      # -------------------------------
+      - name: Print machine details
+        if: ${{ github.event.inputs.print_machine_info == 'true' }}
+        run: |
+          echo "===== Machine Info ====="
+          echo "CPU cores: $(nproc)"
+          echo "Memory: $(free -h)"
+          echo "IP: $(curl -s ifconfig.me)"
+          curl -s https://ipapi.co/json/
+          echo "========================"
+
+      # -------------------------------
+      # Skip unused runners
+      # -------------------------------
+      - name: Skip unused runner jobs
+        if: ${{ matrix.runner_index > fromJSON(github.event.inputs.runners_to_use) }}
+        run: |
+          echo "Skipping runner ${{ matrix.runner_index }}"
+          exit 0
+
+      # -------------------------------
+      # Verify test plan exists before installing anything
+      # -------------------------------
+      - name: Check JMeter test plan exists
+        run: |
+          if [ ! -f "${{ env.SCRIPTS_DIR }}/High_TPS_Runner.jmx" ]; then
+            echo "Test plan not found!"
+            exit 1
+          fi
+          echo "✅ Test plan found."
+
+      # -------------------------------
+      # Install JMeter
+      # -------------------------------
+      - name: Install JMeter
+        run: |
+          JMETER_VERSION=${{ env.JMETER_VERSION }}
+          # Download JMeter tarball
+          curl -L https://downloads.apache.org/jmeter/binaries/apache-jmeter-$JMETER_VERSION.tgz -o jmeter.tgz
+          tar -xzf jmeter.tgz
+          mv apache-jmeter-$JMETER_VERSION $HOME/jmeter
+          echo "$HOME/jmeter/bin" >> $GITHUB_PATH
+
+      # -------------------------------
+      # Install required plugins
+      # -------------------------------
+      - name: Install JMeter Plugins
+        run: |
+          mkdir -p $HOME/jmeter/lib/ext
+
+          # Dummy Sampler plugin
+          curl -L -o /tmp/jpgc-dummy-0.4.zip https://jmeter-plugins.org/files/packages/jpgc-dummy-0.4.zip
+          unzip -o /tmp/jpgc-dummy-0.4.zip -d /tmp/dummy-plugin
+          find /tmp/dummy-plugin -name "*.jar" -exec cp {} $HOME/jmeter/lib/ext/ \;
+
+          # Ultimate Thread Group plugin
+          curl -L -o /tmp/jpgc-ultimate-thread-group-3.0.zip https://jmeter-plugins.org/files/packages/jpgc-casutg-3.1.1.zip
+          unzip -o /tmp/jpgc-ultimate-thread-group-3.0.zip -d /tmp/ultimate-plugin
+          find /tmp/ultimate-plugin -name "*.jar" -exec cp {} $HOME/jmeter/lib/ext/ \;
+
+          # CMDRunner plugin
+          curl -L -o /tmp/cmdrunner-2.3.jar https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.3/cmdrunner-2.3.jar
+          cp /tmp/cmdrunner-2.3.jar $HOME/jmeter/lib/
+
+      # -------------------------------
+      # Optional System Monitoring
+      # -------------------------------
+      - name: Start system monitoring (optional)
+        if: ${{ github.event.inputs.monitor_system == 'true' }}
+        run: |
+          mkdir -p "${{ env.REPORT_DIR }}"
+          LOG_FILE="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-system.log"
+          echo "timestamp,cpu_user,cpu_system,cpu_idle,mem_used,mem_free" > $LOG_FILE
+          monitor() {
+            while true; do
+              ts=$(date +"%Y-%m-%d %H:%M:%S")
+              cpu=$(mpstat 1 1 | awk '/Average/ {print $3","$5","$12}')
+              mem=$(free -m | awk '/Mem:/ {print $3","$4}')
+              echo "$ts,$cpu,$mem" >> $LOG_FILE
+              sleep 180
+            done
+          }
+          monitor &
+          echo $! > /tmp/monitor_pid.txt
+
+      # -------------------------------
+      # Run JMeter Test
+      # -------------------------------
+      - name: Run JMeter Test
+        id: run_test
+        run: |
+          TEST_NAME="${{ needs.set-test-name.outputs.final_test_name }}"
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          RESULT_DIR="${{ env.REPORT_DIR }}/${TEST_NAME}-runner-${{ matrix.runner_index }}-$TIMESTAMP"
+          mkdir -p "$RESULT_DIR"
+
+          # Run JMeter in non-GUI mode with HTML report and JTL output
+          jmeter -n \
+            -t "${{ env.SCRIPTS_DIR }}/High_TPS_Runner.jmx" \
+            -l "$RESULT_DIR/results.jtl" \
+            -e -o "$RESULT_DIR/html-report" \
+            -j "$RESULT_DIR/jmeter.log" \
+            -Jjmeter.save.saveservice.autoflush=true
+
+          # Capture result dir for artifact upload
+          echo "result_dir=$RESULT_DIR" >> $GITHUB_OUTPUT
+
+      # -------------------------------
+      # Stop system monitoring
+      # -------------------------------
+      - name: Stop system monitoring (optional)
+        if: ${{ github.event.inputs.monitor_system == 'true' }}
+        run: |
+          if [ -f /tmp/monitor_pid.txt ]; then
+            kill $(cat /tmp/monitor_pid.txt) || true
+            rm /tmp/monitor_pid.txt
+          fi
+
+      # -------------------------------
+      # Package runner artifacts
+      # -------------------------------
+      - name: Package Runner Artifacts
+        run: |
+          ZIP_NAME="runner-${{ matrix.runner_index }}-results.zip"
+          mkdir -p upload
+          zip -r "upload/$ZIP_NAME" "${{ steps.run_test.outputs.result_dir }}"
+          echo "Packaged runner ZIP: upload/$ZIP_NAME"
+
+      - name: Upload Runner Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmeter-results-runner-${{ matrix.runner_index }}
+          path: upload/*.zip
+
+# =========================================================
+# Job 3: Aggregate reports
+# =========================================================
+  aggregate-reports:
+    if: ${{ github.event.inputs.test_type != 'cleanup' }}
+    needs: run-jmeter
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout code
+      - uses: actions/checkout@v4
+
+      # Download all runner artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          path: jmeter-results
+
+      # Extract all runner ZIPs
+      - run: |
+          mkdir -p combined-results
+          for zipfile in jmeter-results/**/*.zip; do
+            [ -f "$zipfile" ] || continue
+            foldername=$(basename "$zipfile" .zip)
+            mkdir -p combined-results/"$foldername"
+            unzip -o "$zipfile" -d combined-results/"$foldername"
+          done
+
+      # Merge all JTLs
+      - run: |
+          mkdir -p consolidated
+          MERGED_JTL="consolidated/all_results.jtl"
+          head -n 1 $(find combined-results -name "results.jtl" | head -n1) > $MERGED_JTL
+          for file in $(find combined-results -name "results.jtl"); do
+            tail -n +2 "$file" >> $MERGED_JTL
+          done
+
+          # Generate consolidated HTML report
+          jmeter -g $MERGED_JTL -o consolidated/html-report
+          echo "✅ Consolidated report generated at consolidated/html-report"
+
+      # Package consolidated artifacts
+      - run: |
+          mkdir -p final-upload
+          cp jmeter-results/**/*.zip final-upload/ || true
+          cp -r consolidated final-upload/consolidated || true
+          zip -r "consolidated-results.zip" final-upload/
+
+      # Upload consolidated artifact
+      - uses: actions/upload-artifact@v4
+        with:
+          name: consolidated-jmeter-results
+          path: consolidated-results.zip
+
+# =========================================================
+# Job 4: Cleanup old artifacts
+# =========================================================
+  cleanup-artifacts:
+    if: ${{ github.event.inputs.test_type == 'cleanup' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup old runner results
+        run: |
+          echo "🧹 Cleaning runner results older than ${{ github.event.inputs.cleanup_days }} days..."
+          find ${{ env.REPORT_DIR }} -maxdepth 1 -type d -name "*-runner-*" -mtime +${{ github.event.inputs.cleanup_days }} -exec rm -rf {} +
+          echo "✅ Old runner directories deleted."
+
+      - name: Cleanup old consolidated results
+        run: |
+          echo "🧹 Cleaning consolidated directories older than ${{ github.event.inputs.cleanup_days }} days..."
+          find consolidated -maxdepth 1 -type d -mtime +${{ github.event.inputs.cleanup_days }} -exec rm -rf {} + || true
+          echo "✅ Old consolidated directories deleted."
