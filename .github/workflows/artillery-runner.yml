@@ -21,7 +21,6 @@ on:
         options:
           - app1
           - app2
-		  
       runners_to_use:
         description: "Number of parallel runners to use (1–4)"
         required: true
