@@ -1,7 +1,6 @@
 name: "Artillery Load Test (Multi-Runner)"
 
 # Dynamic run-name shown in GitHub Actions UI
-# Uses user-provided test_name if available, otherwise generates formatted descriptive name
 run-name: >
   Artillery Workflow: ${{ github.event.inputs.test_name }}
 on:
@@ -66,11 +65,10 @@ env:
   ARTILLERY_VERSION: "2.0.21"
   SCRIPTS_DIR: "./applications/${{ github.event.inputs.app_name }}/scripts"
   DATA_DIR: "./applications/${{ github.event.inputs.app_name }}/data"
-  # REPORT_DIR: Removed here, will be set inside jobs (Requirement 1 fix)
   UPLOAD_RESULTS: "true"
   
   # -------------------------------
-  # New variables for Python script environment (Requirement 2)
+  # Variables for Python script environment (Requirement 2)
   # -------------------------------
   PY_APP_NAME: ${{ github.event.inputs.app_name }}
   PY_TEST_NAME: ${{ github.event.inputs.test_name }}        
@@ -80,9 +78,9 @@ env:
   PY_GRANULARITY: ""                                       
   PY_SHOW_OVERALL_METRICS: ""                              
 
----
-## Jobs Definition
-
+# =========================================================
+# The required 'jobs' property starts here, at the top level.
+# =========================================================
 jobs:
   set-test-name:
     runs-on: ubuntu-latest
@@ -92,49 +90,35 @@ jobs:
     steps:
       # -------------------------------
       # Determine final test name based on user input (Requirement 1)
-      # Logic: job name (FINAL_NAME base) + testname + runname (or run_MMDDYYYY)
       # -------------------------------
       - id: determine
         run: |
-          # Get current date in MMDDYYYY and YYYYMMDD formats
           DATE_MMDDYYYY=$(date +%m%d%Y)
           DATE_YYYYMMDD=$(date +%Y%m%d)
           
-          # Use 'artillery' as a default base job name/prefix
           BASE_NAME="artillery"
 
-          # Check if test_name is provided, if so, append it to the base name
           if [ -n "${{ github.event.inputs.test_name }}" ]; then
-            # Requirement: If test name is provided then append it to to job name
             FINAL_NAME="${BASE_NAME}-${{ github.event.inputs.test_name }}"
           else
-            # Fallback if no test_name
             FINAL_NAME="${BASE_NAME}-test-$DATE_YYYYMMDD"
           fi
 
-          # Check if run_name is provided
           if [ -n "${{ github.event.inputs.run_name }}" ]; then
-            # Requirement: if runname is provided then add the run name to the appended string as well.
             FINAL_NAME="${FINAL_NAME}-${{ github.event.inputs.run_name }}"
           else
-            # Requirement: if no runname then run_MMDDYYYY should be added to jobname+testname
             FINAL_NAME="${FINAL_NAME}-run_${DATE_MMDDYYYY}"
           fi
           
           echo "final_test_name=$FINAL_NAME" >> $GITHUB_OUTPUT
 
----
-
   run-artillery:
-    # -------------------------------
-    # Accesses job output via 'needs' context in the job name itself
-    # -------------------------------
     name: ${{ needs.set-test-name.outputs.final_test_name }} - Runner ${{ matrix.runner_index }}
     runs-on: ubuntu-latest
-    needs: set-test-name # Ensure naming job runs first
+    needs: set-test-name
 
     strategy:
-      fail-fast: false  # Continue all runners even if one fails
+      fail-fast: false
       matrix:
         runner_index: [1, 2, 3, 4]
 
@@ -145,7 +129,6 @@ jobs:
       - name: Set job environment variables
         id: set_env
         run: |
-          # Sets the REPORT_DIR variable for use in subsequent steps of this job
           echo "REPORT_DIR=./reports/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}" >> $GITHUB_ENV
           
       # -------------------------------
@@ -234,7 +217,6 @@ jobs:
         if: ${{ github.event.inputs.monitor_system == 'true' && matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         shell: bash
         run: |
-          # Use the newly defined REPORT_DIR
           mkdir -p "${{ env.REPORT_DIR }}"
           LOG_FILE="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-system.log"
           echo "timestamp,cpu_user,cpu_system,cpu_idle,mem_used,mem_free" > $LOG_FILE
@@ -258,11 +240,9 @@ jobs:
         id: run_test
         shell: bash
         run: |
-          # Use the newly defined REPORT_DIR
           mkdir -p "${{ env.REPORT_DIR }}"
           TIMESTAMP=$(date +%Y%m%d)
           RANDOM_SUFFIX=$(head /dev/urandom | tr -dc a-z0-9 | head -c 6)
-          # Use the pre-calculated test name from the set-test-name job
           TEST_NAME="${{ needs.set-test-name.outputs.final_test_name }}"
           RESULT_JSON="${TEST_NAME}-runner-${{ matrix.runner_index }}-${RANDOM_SUFFIX}.json"
           RESULT_HTML="${TEST_NAME}-runner-${{ matrix.runner_index }}-${RANDOM_SUFFIX}-full.html"
@@ -298,46 +278,38 @@ jobs:
           path: ${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-system.log
 
       # -------------------------------
-      # Generate Python dashboard for this runner
-      # Conditionally pass environment variables as arguments (Requirement 2)
+      # Generate Python dashboard for this runner (Requirement 2)
       # -------------------------------
       - name: Generate Python dashboard for this runner
         if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
-        continue-on-error: true    # <-- Continue workflow even if Python dashboard fails
+        continue-on-error: true
         shell: bash
         run: |
           RUNNER_HTML="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-dashboard.html"
           echo "Generating dashboard for runner ${{ matrix.runner_index }}..."
           
-          # Build dynamic arguments string
           ARGS=""
           
-          # Pass --app-name (always present per instruction)
           if [ -n "${{ env.PY_APP_NAME }}" ]; then
             ARGS="$ARGS --app-name \"${{ env.PY_APP_NAME }}\""
           fi
           
-          # Pass --test-name if PY_TEST_NAME is not empty
           if [ -n "${{ env.PY_TEST_NAME }}" ]; then
             ARGS="$ARGS --test-name \"${{ env.PY_TEST_NAME }}\""
           fi
           
-          # Pass --sla if PY_SLA is not empty
           if [ -n "${{ env.PY_SLA }}" ]; then
             ARGS="$ARGS --sla \"${{ env.PY_SLA }}\""
           fi
           
-          # Pass --mode if PY_MODE is not empty
           if [ -n "${{ env.PY_MODE }}" ]; then
             ARGS="$ARGS --mode \"${{ env.PY_MODE }}\""
           fi
           
-          # Pass --granularity if PY_GRANULARITY is not empty
           if [ -n "${{ env.PY_GRANULARITY }}" ]; then
             ARGS="$ARGS --granularity \"${{ env.PY_GRANULARITY }}\""
           fi
           
-          # Pass --show-overall-metrics if PY_SHOW_OVERALL_METRICS is not empty (Flag parameter)
           if [ -n "${{ env.PY_SHOW_OVERALL_METRICS }}" ]; then
             ARGS="$ARGS --show-overall-metrics"
           fi
@@ -353,12 +325,11 @@ jobs:
       # Package Artillery results into ZIP
       # -------------------------------
       - name: Package Artillery results into ZIP
-        if: always()    # <-- Always run to ensure partial results are captured
+        if: always()
         shell: bash
         run: |
           ZIP_NAME="runner-${{ matrix.runner_index }}-results.zip"
           mkdir -p upload
-          # Use the newly defined REPORT_DIR
           echo "Packaging available files for runner ${{ matrix.runner_index }}..."
           zip -r "upload/$ZIP_NAME" "${{ env.REPORT_DIR }}" || echo "⚠️ ZIP packaging encountered a warning"
           echo "Packaged runner ZIP: upload/$ZIP_NAME"
@@ -366,28 +337,25 @@ jobs:
       # Upload runner artifact
       # -------------------------------
       - name: Upload runner artifact
-        if: always()    # <-- Ensure upload happens even if previous steps failed
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: artillery-results-runner-${{ matrix.runner_index }}
           path: upload/*.zip
         continue-on-error: true
 
----
-
   aggregate-reports:
-    if: always()  # Runs even if some runners fail
+    if: always()
     needs: [set-test-name, run-artillery]
     runs-on: ubuntu-latest
 
     steps:
       # -------------------------------
-      # Set REPORT_DIR for this job (Needed for artifact uploads later)
+      # Set REPORT_DIR for this job
       # -------------------------------
       - name: Set job environment variables
         id: set_env
         run: |
-          # Sets the REPORT_DIR variable for use in subsequent steps of this job
           echo "REPORT_DIR=./reports/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}" >> $GITHUB_ENV
           
       # -------------------------------
@@ -405,7 +373,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artillery-results
-        continue-on-error: true  # Continue if some artifacts are missing
+        continue-on-error: true
 
       # -------------------------------
       # Extract all runner ZIPs
@@ -423,7 +391,6 @@ jobs:
 
       # -------------------------------
       # Determine test name for consolidated files
-      # Use the pre-calculated final_test_name from the set-test-name job
       # -------------------------------
       - name: Determine test name
         id: test_name
@@ -463,8 +430,7 @@ jobs:
           pip install pandas pyyaml plotly numpy
 
       # -------------------------------
-      # Generate consolidated Python dashboard
-      # Conditionally pass environment variables as arguments (Requirement 2)
+      # Generate consolidated Python dashboard (Requirement 2)
       # -------------------------------
       - name: Generate consolidated Python dashboard
         if: ${{ steps.collect_jsons.outputs.json_files != '' }}
@@ -473,35 +439,28 @@ jobs:
         run: |
           FINAL_HTML="${{ steps.test_name.outputs.consolidated_test_name }}-consolidated-dashboard.html"
           
-          # Build dynamic arguments string
           ARGS=""
           
-          # Pass --app-name (always present per instruction)
           if [ -n "${{ env.PY_APP_NAME }}" ]; then
             ARGS="$ARGS --app-name \"${{ env.PY_APP_NAME }}\""
           fi
           
-          # Pass --test-name if PY_TEST_NAME is not empty
           if [ -n "${{ env.PY_TEST_NAME }}" ]; then
             ARGS="$ARGS --test-name \"${{ env.PY_TEST_NAME }}\""
           fi
           
-          # Pass --sla if PY_SLA is not empty
           if [ -n "${{ env.PY_SLA }}" ]; then
             ARGS="$ARGS --sla \"${{ env.PY_SLA }}\""
           fi
           
-          # Pass --mode if PY_MODE is not empty
           if [ -n "${{ env.PY_MODE }}" ]; then
             ARGS="$ARGS --mode \"${{ env.PY_MODE }}\""
           fi
           
-          # Pass --granularity if PY_GRANULARITY is not empty
           if [ -n "${{ env.PY_GRANULARITY }}" ]; then
             ARGS="$ARGS --granularity \"${{ env.PY_GRANULARITY }}\""
           fi
           
-          # Pass --show-overall-metrics if PY_SHOW_OVERALL_METRICS is not empty (Flag parameter)
           if [ -n "${{ env.PY_SHOW_OVERALL_METRICS }}" ]; then
             ARGS="$ARGS --show-overall-metrics"
           fi
@@ -545,13 +504,11 @@ jobs:
           cp consolidated-results.zip "$FINAL_RESULTS_DIR/"
           echo "✅ Consolidated results uploaded to $FINAL_RESULTS_DIR"
 
----
-
   cleanup-artifacts:
     if: ${{ github.event.inputs.test_type == 'cleanup' }}
     runs-on: ubuntu-latest
     permissions:
-      actions: write  # Needed to delete GitHub artifacts
+      actions: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -578,7 +535,6 @@ jobs:
           DAYS=${{ github.event.inputs.cleanup_days || 7 }}
           echo "Deleting GitHub Actions artifacts older than $DAYS days"
 
-          # Get list of artifacts via GitHub API
           ARTIFACTS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/actions/artifacts?per_page=100" | jq -r '.artifacts[] | "\(.id) \(.created_at)"')
 
