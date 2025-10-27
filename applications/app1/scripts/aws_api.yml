@@ -8,9 +8,9 @@ config:
     headers:
       x-api-key: "abc123"
       Content-Type: "application/json"
-  processor: "./artillery_processors.js"   # custom JS processor for logging errors
+  processor: "./utilities/artillery_processors.js"   # custom JS processor for logging errors
   payload:
-    path: "./aws_api_users.csv"             # CSV file for POST payload
+    path: "./data/aws_api_users.csv"             # CSV file for POST payload
     fields:
       - first_name
       - last_name
@@ -35,4 +35,5 @@ scenarios:
             last_name: "{{ last_name }}"
             email: "{{ email }}"
           afterResponse: "captureErrors"
+
 
