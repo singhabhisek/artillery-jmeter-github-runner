@@ -76,7 +76,7 @@ env:
   PY_SLA: ""                                               
   PY_MODE: ""                                              
   PY_GRANULARITY: ""                                       
-  PY_SHOW_OVERALL_METRICS: ""                              
+  PY_SHOW_OVERALL_METRICS: "true"                              
 
 # =========================================================
 # The required 'jobs' property starts here, at the top level.
