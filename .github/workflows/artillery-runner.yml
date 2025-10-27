@@ -14,9 +14,6 @@ on:
         options:
           - load
           - cleanup
-	  # -----------------------------
-      # Select application for testing
-      # -----------------------------
       app_name:
         description: "Application to test (app1, app2, etc.)"
         required: true
