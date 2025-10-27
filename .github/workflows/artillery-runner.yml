@@ -66,7 +66,8 @@ env:
   ARTILLERY_VERSION: "2.0.21"
   SCRIPTS_DIR: "./applications/${{ github.event.inputs.app_name }}/scripts"
   DATA_DIR: "./applications/${{ github.event.inputs.app_name }}/data"
-  REPORT_DIR: "./reports/${{ github.event.inputs.app_name }}"
+  REPORT_DIR: "./reports/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}"
+  UPLOAD_RESULTS: "true"
 
 # =========================================================
 # Pre-step job to calculate the final test name
@@ -302,116 +303,132 @@ jobs:
 # Aggregate reports (always run, even if some runners fail)
 # =========================================================
   aggregate-reports:
-    if: always()   # <-- Ensures aggregation runs regardless of errors/cancellations
-    needs: [set-test-name, run-artillery]
-    runs-on: ubuntu-latest
+  if: always()   # Runs even if some runners fail
+  needs: [set-test-name, run-artillery]
+  runs-on: ubuntu-latest
 
-    steps:
-      # -------------------------------
-      # Checkout repository
-      # -------------------------------
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+  steps:
+    # -------------------------------
+    # Checkout repository
+    # -------------------------------
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-      # -------------------------------
-      # Download all runner artifacts
-      # -------------------------------
-      - name: Download all runner artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artillery-results
-        continue-on-error: true   # <-- Continue even if some artifacts are missing
+    # -------------------------------
+    # Download all runner artifacts (optional)
+    # -------------------------------
+    - name: Download all runner artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artillery-results
+      continue-on-error: true  # Continue if some artifacts are missing
 
-      # -------------------------------
-      # Extract all runner ZIPs
-      # -------------------------------
-      - name: Extract all runner ZIPs
-        shell: bash
-        run: |
-          mkdir -p combined-results
-          for zipfile in artillery-results/**/*.zip; do
-            [ -f "$zipfile" ] || continue
-            foldername=$(basename "$zipfile" .zip)
-            mkdir -p combined-results/"$foldername"
-            unzip -o "$zipfile" -d combined-results/"$foldername"
-          done
-      # -------------------------------
-      # Determine test name for consolidated files
-      # -------------------------------
-      - name: Determine test name for consolidated files
-        id: test_name
-        shell: bash
-        run: |
-          if [ -z "${{ github.event.inputs.test_name }}" ]; then
-            CONSOLIDATED_NAME="test-$(date +%Y%m%d)"
-          else
-            CONSOLIDATED_NAME="${{ github.event.inputs.test_name }}"
-          fi
-          echo "consolidated_test_name=$CONSOLIDATED_NAME" >> $GITHUB_OUTPUT
-      # -------------------------------
-      # Collect all JSON filenames
-      # -------------------------------
-      - name: Collect all JSON filenames
-        id: collect_jsons
-        shell: bash
-        run: |
-          JSON_FILES=$(find combined-results -name '*.json' -type f | paste -sd "," -)
-          if [ -z "$JSON_FILES" ]; then
-            echo "No JSON files found. Skipping final dashboard generation."
-            echo "json_files=" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          echo "json_files=$JSON_FILES" >> $GITHUB_OUTPUT
-      # -------------------------------
-      # Setup Python for consolidation
-      # -------------------------------
-      - name: Setup Python
-        if: ${{ steps.collect_jsons.outputs.json_files != '' }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13.1"
+    # -------------------------------
+    # Extract all runner ZIPs
+    # -------------------------------
+    - name: Extract all runner ZIPs
+      shell: bash
+      run: |
+        mkdir -p combined-results
+        for zipfile in artillery-results/**/*.zip; do
+          [ -f "$zipfile" ] || continue
+          foldername=$(basename "$zipfile" .zip)
+          mkdir -p combined-results/"$foldername"
+          unzip -o "$zipfile" -d combined-results/"$foldername"
+        done
 
-      - name: Install Python Dependencies
-        if: ${{ steps.collect_jsons.outputs.json_files != '' }}
-        run: |
-          python -m pip install --upgrade pip
-          pip install pandas pyyaml plotly numpy
-      # -------------------------------
-      # Generate consolidated Python dashboard
-      # -------------------------------
-      - name: Generate consolidated Python dashboard
-        if: ${{ steps.collect_jsons.outputs.json_files != '' }}
-        shell: bash
-        continue-on-error: true  # <-- Continue even if Python script fails
-        run: |
-          FINAL_HTML="${{ steps.test_name.outputs.consolidated_test_name }}-consolidated-dashboard.html"
-          python "${GITHUB_WORKSPACE}/generate_artillery_dashboard.py" \
-            --json "${{ steps.collect_jsons.outputs.json_files }}" \
-            --yaml "${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}" \
-            --output "$FINAL_HTML" || echo "⚠️ Python consolidation failed, continuing."
-      # -------------------------------
-      # Package consolidated artifacts
-      # -------------------------------
-      - name: Package consolidated artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir -p final-upload
-          cp artillery-results/**/*.zip final-upload/ || true
-          cp *.html final-upload/ || true
-          zip -r "consolidated-results.zip" final-upload/
-          echo "Packaged all results into consolidated-results.zip"
-      # -------------------------------
-      # Upload consolidated artifacts
-      # -------------------------------
-      - name: Upload consolidated artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: consolidated-artillery-results
-          path: consolidated-results.zip
+    # -------------------------------
+    # Determine test name for consolidated files
+    # -------------------------------
+    - name: Determine test name
+      id: test_name
+      shell: bash
+      run: |
+        if [ -z "${{ github.event.inputs.test_name }}" ]; then
+          CONSOLIDATED_NAME="test-$(date +%Y%m%d)"
+        else
+          CONSOLIDATED_NAME="${{ github.event.inputs.test_name }}"
+        fi
+        echo "consolidated_test_name=$CONSOLIDATED_NAME" >> $GITHUB_OUTPUT
+
+    # -------------------------------
+    # Collect all JSON filenames
+    # -------------------------------
+    - name: Collect all JSON filenames
+      id: collect_jsons
+      shell: bash
+      run: |
+        JSON_FILES=$(find combined-results -name '*.json' -type f | paste -sd "," -)
+        if [ -z "$JSON_FILES" ]; then
+          echo "No JSON files found. Skipping final dashboard generation."
+          echo "json_files=" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        echo "json_files=$JSON_FILES" >> $GITHUB_OUTPUT
+
+    # -------------------------------
+    # Setup Python for consolidation
+    # -------------------------------
+    - name: Setup Python
+      if: ${{ steps.collect_jsons.outputs.json_files != '' }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13.1"
+
+    - name: Install Python Dependencies
+      if: ${{ steps.collect_jsons.outputs.json_files != '' }}
+      run: |
+        python -m pip install --upgrade pip
+        pip install pandas pyyaml plotly numpy
+
+    # -------------------------------
+    # Generate consolidated Python dashboard
+    # -------------------------------
+    - name: Generate consolidated Python dashboard
+      if: ${{ steps.collect_jsons.outputs.json_files != '' }}
+      shell: bash
+      continue-on-error: true
+      run: |
+        FINAL_HTML="${{ steps.test_name.outputs.consolidated_test_name }}-consolidated-dashboard.html"
+        python "${GITHUB_WORKSPACE}/generate_artillery_dashboard.py" \
+          --json "${{ steps.collect_jsons.outputs.json_files }}" \
+          --yaml "${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}" \
+          --output "$FINAL_HTML" || echo "⚠️ Python consolidation failed, continuing."
+
+    # -------------------------------
+    # Package consolidated artifacts
+    # -------------------------------
+    - name: Package consolidated artifacts
+      shell: bash
+      run: |
+        mkdir -p final-upload
+        cp artillery-results/**/*.zip final-upload/ || true
+        cp *.html final-upload/ || true
+        zip -r "consolidated-results.zip" final-upload/
+        echo "Packaged all results into consolidated-results.zip"
+
+    # -------------------------------
+    # Upload consolidated artifacts as GitHub artifact
+    # -------------------------------
+    - name: Upload consolidated artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: consolidated-artillery-results
+        path: consolidated-results.zip
+
+    # -------------------------------
+    # Upload consolidated artifact to results folder (flag-based)
+    # -------------------------------
+    - name: Upload consolidated results to results folder
+      if: ${{ env.UPLOAD_RESULTS == 'true' }}
+      shell: bash
+      run: |
+        FINAL_RESULTS_DIR="./results/${{ github.event.inputs.app_name }}/${{ steps.test_name.outputs.consolidated_test_name }}"
+        mkdir -p "$FINAL_RESULTS_DIR"
+        cp consolidated-results.zip "$FINAL_RESULTS_DIR/"
+        echo "✅ Consolidated results uploaded to $FINAL_RESULTS_DIR"
 
   cleanup-artifacts:
     if: ${{ github.event.inputs.test_type == 'cleanup' }}
