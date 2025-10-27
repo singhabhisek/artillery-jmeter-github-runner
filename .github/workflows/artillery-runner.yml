@@ -1,7 +1,7 @@
 name: "Artillery Load Test (Multi-Runner)"
 
 # Dynamic run-name shown in GitHub Actions UI
-# Uses user-provided run_id if available, otherwise generates formatted descriptive name
+# Uses user-provided test_name if available, otherwise generates formatted descriptive name
 run-name: >
   Artillery Workflow: ${{ github.event.inputs.test_name }}
 on:
@@ -66,8 +66,25 @@ env:
   ARTILLERY_VERSION: "2.0.21"
   SCRIPTS_DIR: "./applications/${{ github.event.inputs.app_name }}/scripts"
   DATA_DIR: "./applications/${{ github.event.inputs.app_name }}/data"
+  # REPORT_DIR uses the final_test_name from the set-test-name job
   REPORT_DIR: "./reports/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}"
   UPLOAD_RESULTS: "true"
+  
+  # -------------------------------
+  # New variables for Python script environment (Requirement 2)
+  # PY_APP_NAME matches the dropdown for application
+  # PY_RUN_ID matches the run_name input on dispatch form
+  # Other values are assigned an empty string ("") to represent a null value
+  # -------------------------------
+  PY_APP_NAME: ${{ github.event.inputs.app_name }}          # Matches application dropdown
+  # PY_TEST_NAME is used for the Python script's --test-name parameter
+  PY_TEST_NAME: ${{ github.event.inputs.test_name }}        
+  # PY_RUN_ID uses run_name input which can be empty
+  PY_RUN_ID: ${{ github.event.inputs.run_name }}            
+  PY_SLA: ""                                               # Defaults to null/empty string
+  PY_MODE: ""                                              # Defaults to null/empty string
+  PY_GRANULARITY: ""                                       # Defaults to null/empty string
+  PY_SHOW_OVERALL_METRICS: ""                              # Defaults to null/empty string
 
 # =========================================================
 # Pre-step job to calculate the final test name
@@ -80,22 +97,36 @@ jobs:
 
     steps:
       # -------------------------------
-      # Determine final test name based on user input
-      # Priority:
-      # 1. run_name input
-      # 2. test_name input
-      # 3. fallback to "test-YYYYMMDD"
+      # Determine final test name based on user input (Requirement 1)
+      # Logic: job name (FINAL_NAME base) + testname + runname (or run_MMDDYYYY)
       # -------------------------------
       - id: determine
         run: |
-          TIMESTAMP=$(date +%Y%m%d)
-          if [ -n "${{ github.event.inputs.run_name }}" ]; then
-            FINAL_NAME="${{ github.event.inputs.run_name }}"
-          elif [ -n "${{ github.event.inputs.test_name }}" ]; then
-            FINAL_NAME="${{ github.event.inputs.test_name }}"
+          # Get current date in MMDDYYYY and YYYYMMDD formats
+          DATE_MMDDYYYY=$(date +%m%d%Y)
+          DATE_YYYYMMDD=$(date +%Y%m%d)
+          
+          # Use 'artillery' as a default base job name/prefix
+          BASE_NAME="artillery"
+
+          # Check if test_name is provided, if so, append it to the base name
+          if [ -n "${{ github.event.inputs.test_name }}" ]; then
+            # Requirement: If test name is provided then append it to to job name
+            FINAL_NAME="${BASE_NAME}-${{ github.event.inputs.test_name }}"
           else
-            FINAL_NAME="test-$TIMESTAMP"
+            # Fallback if no test_name
+            FINAL_NAME="${BASE_NAME}-test-$DATE_YYYYMMDD"
           fi
+
+          # Check if run_name is provided
+          if [ -n "${{ github.event.inputs.run_name }}" ]; then
+            # Requirement: if runname is provided then add the run name to the appended string as well.
+            FINAL_NAME="${FINAL_NAME}-${{ github.event.inputs.run_name }}"
+          else
+            # Requirement: if no runname then run_MMDDYYYY should be added to jobname+testname
+            FINAL_NAME="${FINAL_NAME}-run_${DATE_MMDDYYYY}"
+          fi
+          
           echo "final_test_name=$FINAL_NAME" >> $GITHUB_OUTPUT
 # =========================================================
 # Main Artillery Runner Job
@@ -107,6 +138,7 @@ jobs:
     # -------------------------------
     name: ${{ needs.set-test-name.outputs.final_test_name }} - Runner ${{ matrix.runner_index }}
     runs-on: ubuntu-latest
+    needs: set-test-name # Ensure naming job runs first
 
     strategy:
       fail-fast: false  # Continue all runners even if one fails
@@ -263,24 +295,66 @@ jobs:
 
       # -------------------------------
       # Generate Python dashboard for this runner
+      # Conditionally pass environment variables as arguments (Requirement 2)
       # -------------------------------
       - name: Generate Python dashboard for this runner
         if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
-        continue-on-error: true   # <-- Continue workflow even if Python dashboard fails
+        continue-on-error: true    # <-- Continue workflow even if Python dashboard fails
         shell: bash
         run: |
           RUNNER_HTML="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-dashboard.html"
           echo "Generating dashboard for runner ${{ matrix.runner_index }}..."
-          python "${GITHUB_WORKSPACE}/generate_artillery_dashboard.py" \
+          
+          # Build dynamic arguments string
+          ARGS=""
+          
+          # Pass --app-name (always present per instruction)
+          if [ -n "${{ env.PY_APP_NAME }}" ]; then
+            ARGS="$ARGS --app-name \"${{ env.PY_APP_NAME }}\""
+          fi
+          
+          # Pass --test-name if PY_TEST_NAME is not empty
+          if [ -n "${{ env.PY_TEST_NAME }}" ]; then
+            ARGS="$ARGS --test-name \"${{ env.PY_TEST_NAME }}\""
+          fi
+          
+          # Pass --run-id if PY_RUN_ID is not empty (Using it for context, though Python parser only lists --test-name)
+          # NOTE: The provided python parser doesn't have --run-id, but if it did, this is how you'd pass it.
+          # For now, we will assume you meant to pass run_name via --test-name if it was the main focus, 
+          # but sticking strictly to the Python parser, we'll skip passing it unless it was meant to be --test-name
+          
+          # Pass --sla if PY_SLA is not empty
+          if [ -n "${{ env.PY_SLA }}" ]; then
+            ARGS="$ARGS --sla \"${{ env.PY_SLA }}\""
+          fi
+          
+          # Pass --mode if PY_MODE is not empty
+          if [ -n "${{ env.PY_MODE }}" ]; then
+            ARGS="$ARGS --mode \"${{ env.PY_MODE }}\""
+          fi
+          
+          # Pass --granularity if PY_GRANULARITY is not empty
+          if [ -n "${{ env.PY_GRANULARITY }}" ]; then
+            ARGS="$ARGS --granularity \"${{ env.PY_GRANULARITY }}\""
+          fi
+          
+          # Pass --show-overall-metrics if PY_SHOW_OVERALL_METRICS is not empty (Flag parameter)
+          if [ -n "${{ env.PY_SHOW_OVERALL_METRICS }}" ]; then
+            ARGS="$ARGS --show-overall-metrics"
+          fi
+          
+          python "${GITHUB_WORKSPACE}/utilities/generate_artillery_dashboard.py" \
             --json "${{ env.REPORT_DIR }}/${{ steps.run_test.outputs.result_json }}" \
             --yaml "${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}" \
-            --output "$RUNNER_HTML" || echo "⚠️ Python script failed, continuing workflow"
+            --output "$RUNNER_HTML" \
+            $ARGS || echo "⚠️ Python script failed, continuing workflow"
+          
           echo "Generated Python dashboard (if successful): $RUNNER_HTML"
       # -------------------------------
       # Package Artillery results into ZIP
       # -------------------------------
       - name: Package Artillery results into ZIP
-        if: always()   # <-- Always run to ensure partial results are captured
+        if: always()    # <-- Always run to ensure partial results are captured
         shell: bash
         run: |
           ZIP_NAME="runner-${{ matrix.runner_index }}-results.zip"
@@ -292,7 +366,7 @@ jobs:
       # Upload runner artifact
       # -------------------------------
       - name: Upload runner artifact
-        if: always()   # <-- Ensure upload happens even if previous steps failed
+        if: always()    # <-- Ensure upload happens even if previous steps failed
         uses: actions/upload-artifact@v4
         with:
           name: artillery-results-runner-${{ matrix.runner_index }}
@@ -303,132 +377,167 @@ jobs:
 # Aggregate reports (always run, even if some runners fail)
 # =========================================================
   aggregate-reports:
-  if: always()   # Runs even if some runners fail
-  needs: [set-test-name, run-artillery]
-  runs-on: ubuntu-latest
+    if: always()  # Runs even if some runners fail
+    needs: [set-test-name, run-artillery]
+    runs-on: ubuntu-latest
 
-  steps:
-    # -------------------------------
-    # Checkout repository
-    # -------------------------------
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+    steps:
+      # -------------------------------
+      # Checkout repository
+      # -------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    # -------------------------------
-    # Download all runner artifacts (optional)
-    # -------------------------------
-    - name: Download all runner artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artillery-results
-      continue-on-error: true  # Continue if some artifacts are missing
+      # -------------------------------
+      # Download all runner artifacts (optional)
+      # -------------------------------
+      - name: Download all runner artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artillery-results
+        continue-on-error: true  # Continue if some artifacts are missing
 
-    # -------------------------------
-    # Extract all runner ZIPs
-    # -------------------------------
-    - name: Extract all runner ZIPs
-      shell: bash
-      run: |
-        mkdir -p combined-results
-        for zipfile in artillery-results/**/*.zip; do
-          [ -f "$zipfile" ] || continue
-          foldername=$(basename "$zipfile" .zip)
-          mkdir -p combined-results/"$foldername"
-          unzip -o "$zipfile" -d combined-results/"$foldername"
-        done
+      # -------------------------------
+      # Extract all runner ZIPs
+      # -------------------------------
+      - name: Extract all runner ZIPs
+        shell: bash
+        run: |
+          mkdir -p combined-results
+          for zipfile in artillery-results/**/*.zip; do
+            [ -f "$zipfile" ] || continue
+            foldername=$(basename "$zipfile" .zip)
+            mkdir -p combined-results/"$foldername"
+            unzip -o "$zipfile" -d combined-results/"$foldername"
+          done
 
-    # -------------------------------
-    # Determine test name for consolidated files
-    # -------------------------------
-    - name: Determine test name
-      id: test_name
-      shell: bash
-      run: |
-        if [ -z "${{ github.event.inputs.test_name }}" ]; then
-          CONSOLIDATED_NAME="test-$(date +%Y%m%d)"
-        else
-          CONSOLIDATED_NAME="${{ github.event.inputs.test_name }}"
-        fi
-        echo "consolidated_test_name=$CONSOLIDATED_NAME" >> $GITHUB_OUTPUT
+      # -------------------------------
+      # Determine test name for consolidated files
+      # Use the pre-calculated final_test_name from the set-test-name job
+      # -------------------------------
+      - name: Determine test name
+        id: test_name
+        shell: bash
+        run: |
+          CONSOLIDATED_NAME="${{ needs.set-test-name.outputs.final_test_name }}"
+          echo "consolidated_test_name=$CONSOLIDATED_NAME" >> $GITHUB_OUTPUT
 
-    # -------------------------------
-    # Collect all JSON filenames
-    # -------------------------------
-    - name: Collect all JSON filenames
-      id: collect_jsons
-      shell: bash
-      run: |
-        JSON_FILES=$(find combined-results -name '*.json' -type f | paste -sd "," -)
-        if [ -z "$JSON_FILES" ]; then
-          echo "No JSON files found. Skipping final dashboard generation."
-          echo "json_files=" >> $GITHUB_OUTPUT
-          exit 0
-        fi
-        echo "json_files=$JSON_FILES" >> $GITHUB_OUTPUT
+      # -------------------------------
+      # Collect all JSON filenames
+      # -------------------------------
+      - name: Collect all JSON filenames
+        id: collect_jsons
+        shell: bash
+        run: |
+          # The REPORT_DIR environment variable is not available in the aggregate job
+          # but we can find all JSON files in the downloaded artifacts.
+          JSON_FILES=$(find combined-results -name '*.json' -type f | paste -sd "," -)
+          if [ -z "$JSON_FILES" ]; then
+            echo "No JSON files found. Skipping final dashboard generation."
+            echo "json_files=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          echo "json_files=$JSON_FILES" >> $GITHUB_OUTPUT
 
-    # -------------------------------
-    # Setup Python for consolidation
-    # -------------------------------
-    - name: Setup Python
-      if: ${{ steps.collect_jsons.outputs.json_files != '' }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.13.1"
+      # -------------------------------
+      # Setup Python for consolidation
+      # -------------------------------
+      - name: Setup Python
+        if: ${{ steps.collect_jsons.outputs.json_files != '' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.1"
 
-    - name: Install Python Dependencies
-      if: ${{ steps.collect_jsons.outputs.json_files != '' }}
-      run: |
-        python -m pip install --upgrade pip
-        pip install pandas pyyaml plotly numpy
+      - name: Install Python Dependencies
+        if: ${{ steps.collect_jsons.outputs.json_files != '' }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas pyyaml plotly numpy
 
-    # -------------------------------
-    # Generate consolidated Python dashboard
-    # -------------------------------
-    - name: Generate consolidated Python dashboard
-      if: ${{ steps.collect_jsons.outputs.json_files != '' }}
-      shell: bash
-      continue-on-error: true
-      run: |
-        FINAL_HTML="${{ steps.test_name.outputs.consolidated_test_name }}-consolidated-dashboard.html"
-        python "${GITHUB_WORKSPACE}/generate_artillery_dashboard.py" \
-          --json "${{ steps.collect_jsons.outputs.json_files }}" \
-          --yaml "${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}" \
-          --output "$FINAL_HTML" || echo "⚠️ Python consolidation failed, continuing."
+      # -------------------------------
+      # Generate consolidated Python dashboard
+      # Conditionally pass environment variables as arguments (Requirement 2)
+      # -------------------------------
+      - name: Generate consolidated Python dashboard
+        if: ${{ steps.collect_jsons.outputs.json_files != '' }}
+        shell: bash
+        continue-on-error: true
+        run: |
+          FINAL_HTML="${{ steps.test_name.outputs.consolidated_test_name }}-consolidated-dashboard.html"
+          
+          # Build dynamic arguments string
+          ARGS=""
+          
+          # Pass --app-name (always present per instruction)
+          if [ -n "${{ env.PY_APP_NAME }}" ]; then
+            ARGS="$ARGS --app-name \"${{ env.PY_APP_NAME }}\""
+          fi
+          
+          # Pass --test-name if PY_TEST_NAME is not empty
+          if [ -n "${{ env.PY_TEST_NAME }}" ]; then
+            ARGS="$ARGS --test-name \"${{ env.PY_TEST_NAME }}\""
+          fi
+          
+          # Pass --sla if PY_SLA is not empty
+          if [ -n "${{ env.PY_SLA }}" ]; then
+            ARGS="$ARGS --sla \"${{ env.PY_SLA }}\""
+          fi
+          
+          # Pass --mode if PY_MODE is not empty
+          if [ -n "${{ env.PY_MODE }}" ]; then
+            ARGS="$ARGS --mode \"${{ env.PY_MODE }}\""
+          fi
+          
+          # Pass --granularity if PY_GRANULARITY is not empty
+          if [ -n "${{ env.PY_GRANULARITY }}" ]; then
+            ARGS="$ARGS --granularity \"${{ env.PY_GRANULARITY }}\""
+          fi
+          
+          # Pass --show-overall-metrics if PY_SHOW_OVERALL_METRICS is not empty (Flag parameter)
+          if [ -n "${{ env.PY_SHOW_OVERALL_METRICS }}" ]; then
+            ARGS="$ARGS --show-overall-metrics"
+          fi
+          
+          python "${GITHUB_WORKSPACE}/utilities/generate_artillery_dashboard.py" \
+            --json "${{ steps.collect_jsons.outputs.json_files }}" \
+            --yaml "${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}" \
+            --output "$FINAL_HTML" \
+            $ARGS || echo "⚠️ Python consolidation failed, continuing."
 
-    # -------------------------------
-    # Package consolidated artifacts
-    # -------------------------------
-    - name: Package consolidated artifacts
-      shell: bash
-      run: |
-        mkdir -p final-upload
-        cp artillery-results/**/*.zip final-upload/ || true
-        cp *.html final-upload/ || true
-        zip -r "consolidated-results.zip" final-upload/
-        echo "Packaged all results into consolidated-results.zip"
+      # -------------------------------
+      # Package consolidated artifacts
+      # -------------------------------
+      - name: Package consolidated artifacts
+        shell: bash
+        run: |
+          mkdir -p final-upload
+          cp artillery-results/**/*.zip final-upload/ || true
+          cp *.html final-upload/ || true
+          zip -r "consolidated-results.zip" final-upload/
+          echo "Packaged all results into consolidated-results.zip"
 
-    # -------------------------------
-    # Upload consolidated artifacts as GitHub artifact
-    # -------------------------------
-    - name: Upload consolidated artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: consolidated-artillery-results
-        path: consolidated-results.zip
+      # -------------------------------
+      # Upload consolidated artifacts as GitHub artifact
+      # -------------------------------
+      - name: Upload consolidated artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: consolidated-artillery-results
+          path: consolidated-results.zip
 
-    # -------------------------------
-    # Upload consolidated artifact to results folder (flag-based)
-    # -------------------------------
-    - name: Upload consolidated results to results folder
-      if: ${{ env.UPLOAD_RESULTS == 'true' }}
-      shell: bash
-      run: |
-        FINAL_RESULTS_DIR="./results/${{ github.event.inputs.app_name }}/${{ steps.test_name.outputs.consolidated_test_name }}"
-        mkdir -p "$FINAL_RESULTS_DIR"
-        cp consolidated-results.zip "$FINAL_RESULTS_DIR/"
-        echo "✅ Consolidated results uploaded to $FINAL_RESULTS_DIR"
+      # -------------------------------
+      # Upload consolidated artifact to results folder (flag-based)
+      # -------------------------------
+      - name: Upload consolidated results to results folder
+        if: ${{ env.UPLOAD_RESULTS == 'true' }}
+        shell: bash
+        run: |
+          FINAL_RESULTS_DIR="./results/${{ github.event.inputs.app_name }}/${{ steps.test_name.outputs.consolidated_test_name }}"
+          mkdir -p "$FINAL_RESULTS_DIR"
+          cp consolidated-results.zip "$FINAL_RESULTS_DIR/"
+          echo "✅ Consolidated results uploaded to $FINAL_RESULTS_DIR"
 
   cleanup-artifacts:
     if: ${{ github.event.inputs.test_type == 'cleanup' }}
