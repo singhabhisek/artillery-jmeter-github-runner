@@ -1,0 +1,37 @@
+config:
+  target: "https://79ew9ywiya.execute-api.us-east-2.amazonaws.com/prod"
+  phases:
+    - duration: 600
+      arrivalRate: 2
+      name: "Warm-up Phase"
+  defaults:
+    headers:
+      x-api-key: "abc123"
+      Content-Type: "application/json"
+  processor: "./processors.js"   # custom JS processor for logging errors
+  payload:
+    path: "users.csv"             # CSV file for POST payload
+    fields:
+      - first_name
+      - last_name
+      - email
+  plugins:
+    metrics-by-endpoint:
+      useOnlyRequestNames: true
+
+scenarios:
+  - name: "GET users endpoint"
+    flow:
+      - get:
+          url: "/users"
+          afterResponse: "captureErrors"
+
+  - name: "POST register endpoint"
+    flow:
+      - post:
+          url: "/register"
+          json:
+            first_name: "{{ first_name }}"
+            last_name: "{{ last_name }}"
+            email: "{{ email }}"
+          afterResponse: "captureErrors"
