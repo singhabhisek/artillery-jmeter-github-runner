@@ -1,0 +1,112 @@
+config:
+  target: "https://xc2wojfn0c.execute-api.us-east-2.amazonaws.com"
+  
+  # ❌ REMOVE the old 'plugins: aws-sigv4' block
+  # ✅ Define the custom processor file instead
+  processor: "./custom-signer.js" 
+  
+  phases:
+    - duration: 10
+      arrivalRate: 1
+      name: Load Test Signed API
+
+scenarios:
+  # Scenario 1: Signed GET Request
+  - name: 1. Signed GET /secure (Custom Signer)
+    # 💥 Call the custom 'signRequest' function
+    beforeRequest: signRequest 
+    flow:
+      - get:
+          url: "/prod/secure"
+          headers:
+            Accept: "application/json"
+          capture:
+            - json: "$"
+              as: getResponseMessage
+      - log: "Custom GET Request Sent {{ getResponseMessage }}."
+
+  # Scenario 2: Signed POST Request
+  - name: 2. Signed POST /secure (Custom Signer)
+    # 💥 Call the custom 'signRequest' function
+    beforeRequest: signRequest
+    flow:
+      - post:
+          url: "/prod/secure"
+          headers:
+            Content-Type: "application/json" 
+          
+          # The custom processor handles the JSON payload hashing
+          json:
+            name: "Alice"
+            age: 29
+            city: "Seattle"
+            
+          capture:
+            - json: "$"
+              as: postResponseMessage
+              
+      - log: "Custom POST Body: Alice, 29, Seattle"
+      - log: "Custom POST Response: {{ postResponseMessage }}"
+      
+      
+ 
+ 
+ 
+ 
+ 
+ 
+# config:
+#  target: "https://xc2wojfn0c.execute-api.us-east-2.amazonaws.com"
+#  
+#  # The plugin configuration remains the same. The environment variables
+#  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_REGION must be set.
+#  plugins:
+#    aws-sigv4:
+#      serviceName: execute-api
+#      region: us-east-2 # REQUIRED for correct SigV4 signing
+#  
+#  phases:
+#    - duration: 1
+#      arrivalRate: 1
+#      name: Load Test Signed API
+#
+#  # NOTE: The global 'defaults.headers' is removed to avoid the "Cannot set properties of undefined" error.
+#
+#scenarios:
+#  # Scenario 1: Signed GET Request (To confirm basic signing is working)
+#  - name: 1. Signed GET /secure
+#    beforeRequest: addAmazonSignatureV4
+#    flow:
+#      - get:
+#          url: "/prod/secure"
+#          headers:
+#            Accept: "application/json"
+#          capture:
+#            - json: "$"
+#              as: GETResponseMessage
+#              
+#      - log: "GET Request Sent: {{ GETResponseMessage }}"
+#
+#  # Scenario 2: Signed POST Request
+#  - name: 2. Signed POST /secure with JSON Body
+#    beforeRequest: addAmazonSignatureV4
+#    flow:
+#      - post:
+#          url: "/prod/secure"
+#          # Mandatory header for POST requests carrying a body
+#          headers:
+#            Content-Type: "application/json" 
+#          
+#          # The JSON payload as required by your Postman example
+#          json:
+#            name: "Alice"
+#            age: 29
+#            city: "Seattle"
+#            
+#          capture:
+#            - json: "$"
+#              as: postResponseMessage
+#              
+#      - log: "POST Body: Alice, 29, Seattle"
+#      - log: "POST Response: {{ postResponseMessage }}"
+
