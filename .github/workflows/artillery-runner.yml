@@ -98,15 +98,19 @@ jobs:
           
           BASE_NAME="artillery"
 
+          # Conditional logic for building the final name
           if [ -n "${{ github.event.inputs.test_name }}" ] && [ -n "${{ github.event.inputs.run_name }}" ]; then
-            # Both test_name and run_name provided
+            # ✅ Both provided
             FINAL_NAME="${BASE_NAME}-${{ github.event.inputs.test_name }}-${{ github.event.inputs.run_name }}"
           elif [ -n "${{ github.event.inputs.test_name }}" ]; then
+            # ✅ Only test name provided
             FINAL_NAME="${BASE_NAME}-${{ github.event.inputs.test_name }}"
           elif [ -n "${{ github.event.inputs.run_name }}" ]; then
-            FINAL_NAME="${FINAL_NAME}-${{ github.event.inputs.run_name }}"
+            # ✅ Only run name provided
+            FINAL_NAME="${BASE_NAME}-${{ github.event.inputs.run_name }}"
           else
-            FINAL_NAME="${FINAL_NAME}-run_${DATE_MMDDYYYY}"
+            # ✅ Neither provided — fallback with date
+            FINAL_NAME="${BASE_NAME}-test-${DATE_YYYYMMDD}-run_${DATE_MMDDYYYY}"
           fi
           
           echo "final_test_name=$FINAL_NAME" >> $GITHUB_OUTPUT
