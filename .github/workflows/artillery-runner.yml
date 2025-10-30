@@ -93,23 +93,26 @@ jobs:
       # -------------------------------
       - id: determine
         run: |
+          # Assign workflow inputs to local variables for safer use
+          TEST_NAME="${{ github.event.inputs.test_name }}"
+          RUN_NAME="${{ github.event.inputs.run_name }}"
+      
+          # Capture current date formats
           DATE_MMDDYYYY=$(date +%m%d%Y)
           DATE_YYYYMMDD=$(date +%Y%m%d)
-          
           BASE_NAME="artillery"
-
-          # Conditional logic for building the final name
-          if [ -n "${{ github.event.inputs.test_name }}" ] && [ -n "${{ github.event.inputs.run_name }}" ]; then
-            # ✅ Both provided
-            FINAL_NAME="${BASE_NAME}-${{ github.event.inputs.test_name }}-${{ github.event.inputs.run_name }}"
-          elif [ -n "${{ github.event.inputs.test_name }}" ]; then
-            # ✅ Only test name provided
-            FINAL_NAME="${BASE_NAME}-${{ github.event.inputs.test_name }}"
-          elif [ -n "${{ github.event.inputs.run_name }}" ]; then
-            # ✅ Only run name provided
-            FINAL_NAME="${BASE_NAME}-${{ github.event.inputs.run_name }}"
+      
+          echo "DEBUG: TEST_NAME='$TEST_NAME'"
+          echo "DEBUG: RUN_NAME='$RUN_NAME'"
+      
+          # Determine final name
+          if [[ -n "$TEST_NAME" && -n "$RUN_NAME" ]]; then
+            FINAL_NAME="${BASE_NAME}-${TEST_NAME}-${RUN_NAME}"
+          elif [[ -n "$TEST_NAME" ]]; then
+            FINAL_NAME="${BASE_NAME}-${TEST_NAME}"
+          elif [[ -n "$RUN_NAME" ]]; then
+            FINAL_NAME="${BASE_NAME}-${RUN_NAME}"
           else
-            # ✅ Neither provided — fallback with date
             FINAL_NAME="${BASE_NAME}-test-${DATE_YYYYMMDD}-run_${DATE_MMDDYYYY}"
           fi
           
