@@ -32,10 +32,10 @@ on:
       scenario_file:
         description: "YAML file for Artillery test (e.g., cloudrun-loadtest.yml)"
         required: true
-        default: "weighted_scenario.yml"
+        default: "aws_api.yml"
       test_name:
         description: "Optional test name; if blank, YYYYMMDD will be used"
-        required: false
+        required: true
         default: ""
       run_name:
         description: "Optional custom run name; overrides test_name if provided"
@@ -98,13 +98,12 @@ jobs:
           
           BASE_NAME="artillery"
 
-          if [ -n "${{ github.event.inputs.test_name }}" ]; then
+          if [ -n "${{ github.event.inputs.test_name }}" ] && [ -n "${{ github.event.inputs.run_name }}" ]; then
+            # Both test_name and run_name provided
+            FINAL_NAME="${BASE_NAME}-${{ github.event.inputs.test_name }}-${{ github.event.inputs.run_name }}"
+          elif [ -n "${{ github.event.inputs.test_name }}" ]; then
             FINAL_NAME="${BASE_NAME}-${{ github.event.inputs.test_name }}"
-          else
-            FINAL_NAME="${BASE_NAME}-test-$DATE_YYYYMMDD"
-          fi
-
-          if [ -n "${{ github.event.inputs.run_name }}" ]; then
+          elif [ -n "${{ github.event.inputs.run_name }}" ]; then
             FINAL_NAME="${FINAL_NAME}-${{ github.event.inputs.run_name }}"
           else
             FINAL_NAME="${FINAL_NAME}-run_${DATE_MMDDYYYY}"
