@@ -2,7 +2,7 @@ name: "Artillery Load Test (Multi-Runner)"
 
 # Dynamic run-name shown in GitHub Actions UI
 run-name: >
-  Artillery Workflow: ${{ github.event.inputs.test_name }}
+  Artillery Workflow: ${{ github.event.inputs.test_name }} ${{ github.event.inputs.run_name }}
 on:
   workflow_dispatch:
     inputs:
