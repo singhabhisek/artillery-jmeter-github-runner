@@ -22,7 +22,7 @@ const { faker } = require("@faker-js/faker");
 // -------------------------------
 const SERVICE_NAME = "execute-api";
 const REGION = process.env.AWS_REGION;
-const TARGET_HOST = process.env.BASE_URL;
+const TARGET_HOST = process.env.TARGET_HOST;
 const LOG_DIR = path.resolve("./artillery-logs");
 
 // Create logs directory if not present
