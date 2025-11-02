@@ -1,6 +1,6 @@
 config:
   target: "https://{{ $processEnvironment.BASE_URL }}"
-  processor: "../../shared/custom-artillery-utils.js"
+  processor: "../../utilities/custom-artillery-utils.js"
   phases:
     - duration: 300
       arrivalRate: 2
