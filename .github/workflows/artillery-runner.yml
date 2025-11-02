@@ -97,6 +97,18 @@ env:
   ARTILLERY_VERSION: "2.0.21"
   UPLOAD_RESULTS: "true"
 
+  # -------------------------------
+  # Variables for Python script environment (Requirement 2)
+  # -------------------------------
+  PY_APP_NAME: ${{ github.event.inputs.app_name }}
+  PY_TEST_NAME: ${{ github.event.inputs.test_name }}        
+  PY_RUN_ID: ${{ github.event.inputs.run_name }}            
+  PY_SLA: ""                                               
+  PY_MODE: ""                                              
+  PY_GRANULARITY: ""                                       
+  PY_SHOW_OVERALL_METRICS: ""                              
+
+
 # ============================================================
 # JOB 1: Set test name dynamically
 # ============================================================
@@ -148,6 +160,17 @@ jobs:
         runner_index: [1, 2, 3, 4]
 
     steps:
+      # -------------------------------
+      # Set REPORT_DIR using the output from the set-test-name job (Fix for Error)
+      # -------------------------------
+      - name: Set job environment variables
+        id: set_env
+        run: |
+          echo "REPORT_DIR=./reports
+          
+      #/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}" >> $GITHUB_ENV
+
+          
       # -----------------------------
       # Skip unused runners
       # -----------------------------
@@ -174,10 +197,43 @@ jobs:
           uname -a
           echo "========================"
 
+      # -------------------------------
+      # Setup Python environment
+      # -------------------------------
+      - name: Setup Python
+        if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.1"
+
+      # -------------------------------
+      # Install Python dependencies
+      # -------------------------------
+      - name: Install Python Dependencies
+        if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas plotly numpy pyyaml
+
+      # -------------------------------
+      # Ensure scenario YAML exists
+      # -------------------------------
+      - name: Check scenario YAML exists
+        if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
+        shell: bash
+        run: |
+          if [ ! -f "${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}" ]; then
+            echo "Scenario file not found!"
+            exit 1
+          else
+            echo "Found scenario file: ${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}"
+          fi
+          
       # -----------------------------
       # Setup Node.js environment
       # -----------------------------
       - name: Setup Node.js
+        if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         uses: actions/setup-node@v4
         with:
           node-version: 20
