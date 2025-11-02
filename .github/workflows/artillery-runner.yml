@@ -96,6 +96,8 @@ on:
 env:
   ARTILLERY_VERSION: "2.0.21"
   UPLOAD_RESULTS: "true"
+  SCRIPTS_DIR: "./applications/${{ github.event.inputs.app_name }}/scripts"
+  DATA_DIR: "./applications/${{ github.event.inputs.app_name }}/data"
 
   # -------------------------------
   # Variables for Python script environment (Requirement 2)
