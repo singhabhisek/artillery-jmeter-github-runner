@@ -1,5 +1,5 @@
 config:
-  target: "https://{{ $processEnvironment.BASE_URL }}"
+  target: "https://{{ $processEnvironment.TARGET_HOST }}"
   processor: "../../utilities/custom-artillery-utils.js"
   phases:
     - duration: 300
@@ -14,7 +14,7 @@ config:
     - "http.response_code.5xx": { max_error_rate: 0.01 }
 
   payload:
-    path: "../data/users.csv"
+    path: "../data/user_city.csv"
     fields:
       - "name"
       - "age"
