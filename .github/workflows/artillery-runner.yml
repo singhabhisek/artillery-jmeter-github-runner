@@ -55,7 +55,7 @@ on:
       scenario_file:
         description: "YAML file for Artillery scenario (e.g., loadtest.yml)"
         required: true
-        default: "aws_api.yml"
+        default: "aws_signed_api.yml ,aws_api.yml"
 
       test_name:
         description: "Optional test name (blank = auto-generated)"
@@ -166,9 +166,7 @@ jobs:
       - name: Set job environment variables
         id: set_env
         run: |
-          echo "REPORT_DIR=./reports
-          
-      #/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}" >> $GITHUB_ENV
+          echo "REPORT_DIR=./reports/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}" >> $GITHUB_ENV
 
           
       # -----------------------------
