@@ -377,47 +377,81 @@ jobs:
       # -------------------------------
       # Generate Python dashboard for this runner (Requirement 2)
       # -------------------------------
+      # - name: Generate Python dashboard for this runner
+      #   if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
+      #   continue-on-error: true
+      #   shell: bash
+      #   run: |
+      #     RUNNER_HTML="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-dashboard.html"
+      #     echo "Generating dashboard for runner ${{ matrix.runner_index }}..."
+          
+      #     ARGS=""
+          
+      #     if [ -n "${{ env.PY_APP_NAME }}" ]; then
+      #       ARGS="$ARGS --app-name \"${{ env.PY_APP_NAME }}\""
+      #     fi
+          
+      #     if [ -n "${{ env.PY_TEST_NAME }}" ]; then
+      #       ARGS="$ARGS --test-name \"${{ env.PY_TEST_NAME }}\""
+      #     fi
+          
+      #     if [ -n "${{ env.PY_SLA }}" ]; then
+      #       ARGS="$ARGS --sla \"${{ env.PY_SLA }}\""
+      #     fi
+          
+      #     if [ -n "${{ env.PY_MODE }}" ]; then
+      #       ARGS="$ARGS --mode \"${{ env.PY_MODE }}\""
+      #     fi
+          
+      #     if [ -n "${{ env.PY_GRANULARITY }}" ]; then
+      #       ARGS="$ARGS --granularity \"${{ env.PY_GRANULARITY }}\""
+      #     fi
+          
+      #     if [ -n "${{ env.PY_SHOW_OVERALL_METRICS }}" ]; then
+      #       ARGS="$ARGS --show-overall-metrics"
+      #     fi
+          
+      #     python "${GITHUB_WORKSPACE}/utilities/generate_artillery_dashboard.py" \
+      #       --json "${{ env.REPORT_DIR }}/${{ steps.run_test.outputs.result_json }}" \
+      #       --yaml "${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}" \
+      #       --output "$RUNNER_HTML" \
+      #       $ARGS || echo "⚠️ Python script failed, continuing workflow"
+          
+      #     echo "Generated Python dashboard (if successful): $RUNNER_HTML"
       - name: Generate Python dashboard for this runner
         if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
-        continue-on-error: true
         shell: bash
         run: |
           RUNNER_HTML="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-dashboard.html"
           echo "Generating dashboard for runner ${{ matrix.runner_index }}..."
           
           ARGS=""
-          
           if [ -n "${{ env.PY_APP_NAME }}" ]; then
             ARGS="$ARGS --app-name \"${{ env.PY_APP_NAME }}\""
           fi
-          
           if [ -n "${{ env.PY_TEST_NAME }}" ]; then
             ARGS="$ARGS --test-name \"${{ env.PY_TEST_NAME }}\""
           fi
-          
           if [ -n "${{ env.PY_SLA }}" ]; then
             ARGS="$ARGS --sla \"${{ env.PY_SLA }}\""
           fi
-          
           if [ -n "${{ env.PY_MODE }}" ]; then
             ARGS="$ARGS --mode \"${{ env.PY_MODE }}\""
           fi
-          
           if [ -n "${{ env.PY_GRANULARITY }}" ]; then
             ARGS="$ARGS --granularity \"${{ env.PY_GRANULARITY }}\""
           fi
-          
           if [ -n "${{ env.PY_SHOW_OVERALL_METRICS }}" ]; then
             ARGS="$ARGS --show-overall-metrics"
           fi
-          
+
           python "${GITHUB_WORKSPACE}/utilities/generate_artillery_dashboard.py" \
-            --json "${{ env.REPORT_DIR }}/${{ steps.run_test.outputs.result_json }}" \
+            --json "$JSON_OUT" \
             --yaml "${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}" \
             --output "$RUNNER_HTML" \
             $ARGS || echo "⚠️ Python script failed, continuing workflow"
-          
-          echo "Generated Python dashboard (if successful): $RUNNER_HTML"
+
+          echo "✅ Dashboard generated: $RUNNER_HTML"
       # -------------------------------
       # Package Artillery results into ZIP
       # -------------------------------
