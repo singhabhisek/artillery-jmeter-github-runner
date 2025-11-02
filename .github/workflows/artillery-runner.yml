@@ -191,6 +191,29 @@ jobs:
           npm install aws4 @faker-js/faker csv-parse
           npm install --save-dev artillery-plugin-metrics-by-endpoint
           artillery --version
+
+      # -------------------------------
+      # Optional System Monitoring
+      # -------------------------------
+      - name: Start system monitoring (optional)
+        if: ${{ github.event.inputs.monitor_system == 'true' && matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
+        shell: bash
+        run: |
+          mkdir -p "${{ env.REPORT_DIR }}"
+          LOG_FILE="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-system.log"
+          echo "timestamp,cpu_user,cpu_system,cpu_idle,mem_used,mem_free" > $LOG_FILE
+          monitor() {
+            while true; do
+              ts=$(date +"%Y-%m-%d %H:%M:%S")
+              cpu=$(mpstat 1 1 | awk '/Average/ {print $3","$5","$12}')
+              mem=$(free -m | awk '/Mem:/ {print $3","$4}')
+              echo "$ts,$cpu,$mem" >> $LOG_FILE
+              sleep 180
+            done
+          }
+          monitor &
+          echo $! > /tmp/monitor_pid.txt
+          echo "System monitoring started in background, logging every 5 minutes."
           
       # -----------------------------
       # Map Environment Variables 
@@ -201,33 +224,40 @@ jobs:
           APP_UPPER=$(echo "${{ github.event.inputs.app_name }}" | tr '[:lower:]' '[:upper:]')
           echo "APP_UPPER=$APP_UPPER" >> $GITHUB_ENV
           
-          # --- Environment Variables (from GitHub Environment Vars) ---
+          # --- Set to SHELL Variables first, then export to GITHUB_ENV ---
           
           # BASE_URL (e.g., APP1_BASE_URL)
-          echo "BASE_URL=${{ vars[format('{0}_BASE_URL', env.APP_UPPER)] }}" >> $GITHUB_ENV
-          # echo "BASE_URL=${{ vars[format('{0}_BASE_URL', env.APP_UPPER)] }}" # For debugging
+          # Store the result in a shell variable first
+          BASE_URL="${{ vars[format('{0}_BASE_URL', env.APP_UPPER)] }}"
+          echo "BASE_URL=$BASE_URL" >> $GITHUB_ENV
+          # echo "BASE_URL=$BASE_URL" # For debugging - SAFE TO UNCOMMENT
           
           # TARGET_HOST (e.g., APP1_TARGET_HOST)
-          echo "TARGET_HOST=${{ vars[format('{0}_TARGET_HOST', env.APP_UPPER)] }}" >> $GITHUB_ENV
-          echo "TARGET_HOST=${{ vars[format('{0}_TARGET_HOST', env.APP_UPPER)] }}" # For debugging
+          TARGET_HOST="${{ vars[format('{0}_TARGET_HOST', env.APP_UPPER)] }}"
+          echo "TARGET_HOST=$TARGET_HOST" >> $GITHUB_ENV
+          # echo "TARGET_HOST=$TARGET_HOST" # For debugging - SAFE TO UNCOMMENT
           
           # REGION (e.g., APP1_REGION)
-          echo "REGION=${{ vars[format('{0}_REGION', env.APP_UPPER)] }}" >> $GITHUB_ENV
-          echo "REGION=${{ vars[format('{0}_REGION', env.APP_UPPER)] }}" # For debugging
+          REGION="${{ vars[format('{0}_REGION', env.APP_UPPER)] }}"
+          echo "REGION=$REGION" >> $GITHUB_ENV
+          # echo "REGION=$REGION" # For debugging - SAFE TO UNCOMMENT
 
-          # --- Sensitive Variables (from GitHub Environment Secrets) ---
+          # --- Sensitive Variables (Secrets, kept secure) ---
           
           # API_KEY (e.g., APP1_API_KEY)
-          echo "API_KEY=${{ secrets[format('{0}_API_KEY', env.APP_UPPER)] }}" >> $GITHUB_ENV
-          echo "API_KEY=***" # For debugging
+          API_KEY="${{ secrets[format('{0}_API_KEY', env.APP_UPPER)] }}"
+          echo "API_KEY=$API_KEY" >> $GITHUB_ENV
+          # echo "API_KEY=***" # For debugging
           
           # ACCESS_KEY (e.g., APP1_ACCESS_KEY)
-          echo "ACCESS_KEY=${{ secrets[format('{0}_ACCESS_KEY', env.APP_UPPER)] }}" >> $GITHUB_ENV
-          echo "ACCESS_KEY=***" # For debugging
+          ACCESS_KEY="${{ secrets[format('{0}_ACCESS_KEY', env.APP_UPPER)] }}"
+          echo "ACCESS_KEY=$ACCESS_KEY" >> $GITHUB_ENV
+          # echo "ACCESS_KEY=***" # For debugging
           
           # SECRET_KEY (e.g., APP1_SECRET_KEY)
-          echo "SECRET_KEY=${{ secrets[format('{0}_SECRET_KEY', env.APP_UPPER)] }}" >> $GITHUB_ENV
-          echo "SECRET_KEY=***" # For debugging
+          SECRET_KEY="${{ secrets[format('{0}_SECRET_KEY', env.APP_UPPER)] }}"
+          echo "SECRET_KEY=$SECRET_KEY" >> $GITHUB_ENV
+          # echo "SECRET_KEY=***" # For debugging
           
           echo "✅ Environment variables mapped for $APP_UPPER. Sensitive values hidden."
           
@@ -235,6 +265,9 @@ jobs:
       # Run Artillery Test
       # -----------------------------
       - name: Run Artillery Test
+        if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
+        id: run_test
+        shell: bash
         env:
           AUTH_HEADER: ${{ secrets.AUTH_HEADER }}
         run: |
@@ -262,15 +295,96 @@ jobs:
 
           echo "✅ Artillery reports generated at: $REPORT_DIR"
 
-      # -----------------------------
-      # Upload each runner’s report as an artifact
-      # -----------------------------
-      - name: Upload Runner Artifacts
+      # -------------------------------
+      # Stop system monitoring (optional)
+      # -------------------------------
+      - name: Stop system monitoring (optional)
+        if: ${{ github.event.inputs.monitor_system == 'true' && matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
+        shell: bash
+        run: |
+          if [ -f /tmp/monitor_pid.txt ]; then
+            kill $(cat /tmp/monitor_pid.txt) || true
+            rm /tmp/monitor_pid.txt
+            echo "System monitoring stopped."
+          fi
+      # -------------------------------
+      # Upload system monitoring logs (optional)
+      # -------------------------------
+      - name: Upload system monitoring logs (optional)
+        if: ${{ github.event.inputs.monitor_system == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: "artillery-results-runner-${{ matrix.runner_index }}"
-          path: reports/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}/
+          name: runner-${{ matrix.runner_index }}-system-logs
+          path: ${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-system.log
 
+
+      # -------------------------------
+      # Generate Python dashboard for this runner (Requirement 2)
+      # -------------------------------
+      - name: Generate Python dashboard for this runner
+        if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          RUNNER_HTML="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-dashboard.html"
+          echo "Generating dashboard for runner ${{ matrix.runner_index }}..."
+          
+          ARGS=""
+          
+          if [ -n "${{ env.PY_APP_NAME }}" ]; then
+            ARGS="$ARGS --app-name \"${{ env.PY_APP_NAME }}\""
+          fi
+          
+          if [ -n "${{ env.PY_TEST_NAME }}" ]; then
+            ARGS="$ARGS --test-name \"${{ env.PY_TEST_NAME }}\""
+          fi
+          
+          if [ -n "${{ env.PY_SLA }}" ]; then
+            ARGS="$ARGS --sla \"${{ env.PY_SLA }}\""
+          fi
+          
+          if [ -n "${{ env.PY_MODE }}" ]; then
+            ARGS="$ARGS --mode \"${{ env.PY_MODE }}\""
+          fi
+          
+          if [ -n "${{ env.PY_GRANULARITY }}" ]; then
+            ARGS="$ARGS --granularity \"${{ env.PY_GRANULARITY }}\""
+          fi
+          
+          if [ -n "${{ env.PY_SHOW_OVERALL_METRICS }}" ]; then
+            ARGS="$ARGS --show-overall-metrics"
+          fi
+          
+          python "${GITHUB_WORKSPACE}/utilities/generate_artillery_dashboard.py" \
+            --json "${{ env.REPORT_DIR }}/${{ steps.run_test.outputs.result_json }}" \
+            --yaml "${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}" \
+            --output "$RUNNER_HTML" \
+            $ARGS || echo "⚠️ Python script failed, continuing workflow"
+          
+          echo "Generated Python dashboard (if successful): $RUNNER_HTML"
+      # -------------------------------
+      # Package Artillery results into ZIP
+      # -------------------------------
+      - name: Package Artillery results into ZIP
+        if: always()
+        shell: bash
+        run: |
+          ZIP_NAME="runner-${{ matrix.runner_index }}-results.zip"
+          mkdir -p upload
+          echo "Packaging available files for runner ${{ matrix.runner_index }}..."
+          zip -r "upload/$ZIP_NAME" "${{ env.REPORT_DIR }}" || echo "⚠️ ZIP packaging encountered a warning"
+          echo "Packaged runner ZIP: upload/$ZIP_NAME"
+      # -------------------------------
+      # Upload runner artifact
+      # -------------------------------
+      - name: Upload runner artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: artillery-results-runner-${{ matrix.runner_index }}
+          path: reports/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}/*.zip
+        continue-on-error: true
+          
 # ============================================================
 # JOB 3: Aggregate results after all runners finish
 # ============================================================
