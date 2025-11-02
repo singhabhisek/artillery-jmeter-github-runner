@@ -276,33 +276,34 @@ jobs:
       # -----------------------------
       - name: Map Environment Variables Dynamically
         shell: bash
+        env:
+          # Define the dynamic variables for the next step's script
+          APP_UPPER: ${{ github.event.inputs.app_name }} # Pass app_name to the shell
+          # Expose the values of the variables/secrets
+          # NOTE: The names here must be exactly what is set in the environment 'test' or 'prod'
+          APP_BASE_URL: ${{ vars[format('{0}_BASE_URL', github.event.inputs.app_name)] }}
+          APP_TARGET_HOST: ${{ vars[format('{0}_TARGET_HOST', github.event.inputs.app_name)] }}
+          APP_REGION: ${{ vars[format('{0}_REGION', github.event.inputs.app_name)] }}
+          APP_ACCESS_KEY: ${{ secrets[format('{0}_ACCESS_KEY', github.event.inputs.app_name)] }}
+          APP_SECRET_KEY: ${{ secrets[format('{0}_SECRET_KEY', github.event.inputs.app_name)] }}
         run: |
           # Convert app_name input to uppercase (e.g., "app1" -> "APP1")
-          APP_UPPER=$(echo "${{ github.event.inputs.app_name }}" | tr '[:lower:]' '[:upper:]')
-
-          # Map repository variables (vars)
-          BASE_URL_VAR="${APP_UPPER}_BASE_URL"
-          TARGET_HOST_VAR="${APP_UPPER}_TARGET_HOST"
-          REGION_VAR="${APP_UPPER}_REGION"
-
-          # Map secrets
-          ACCESS_KEY_VAR="${APP_UPPER}_ACCESS_KEY"
-          SECRET_KEY_VAR="${APP_UPPER}_SECRET_KEY"
-
-          # Use indirect expansion to get the values
-          BASE_URL="${!BASE_URL_VAR}"
-          TARGET_HOST="${!TARGET_HOST_VAR}"
-          REGION="${!REGION_VAR}"
-          ACCESS_KEY="${!ACCESS_KEY_VAR}"
-          SECRET_KEY="${!SECRET_KEY_VAR}"
-
-          # Export to GitHub Actions environment
+          APP_UPPER=$(echo "$APP_UPPER" | tr '[:lower:]' '[:upper:]')
+          
+          # Use the environment variables set in the 'env:' block above
+          BASE_URL="${APP_BASE_URL}"
+          TARGET_HOST="${APP_TARGET_HOST}"
+          REGION="${APP_REGION}"
+          ACCESS_KEY="${APP_ACCESS_KEY}"
+          SECRET_KEY="${APP_SECRET_KEY}"
+          
+          # Export to GitHub Actions environment for subsequent steps
           echo "BASE_URL=$BASE_URL" >> $GITHUB_ENV
           echo "TARGET_HOST=$TARGET_HOST" >> $GITHUB_ENV
           echo "REGION=$REGION" >> $GITHUB_ENV
-          echo "ACCESS_KEY=***" >> $GITHUB_ENV
-          echo "SECRET_KEY=***" >> $GITHUB_ENV
-
+          echo "ACCESS_KEY=$ACCESS_KEY" >> $GITHUB_ENV
+          echo "SECRET_KEY=$SECRET_KEY" >> $GITHUB_ENV # NOTE: GitHub automatically masks secrets in logs
+          
           echo "✅ Environment variables mapped for $APP_UPPER"
           echo "BASE_URL=$BASE_URL"
           echo "TARGET_HOST=$TARGET_HOST"
