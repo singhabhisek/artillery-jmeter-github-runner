@@ -1,5 +1,8 @@
-name: "Artillery Load Test (Multi-Runner, Env-Aware)"
+name: "Artillery Load Test"
 
+run-name: >
+  Artillery Workflow: ${{ github.event.inputs.test_name }} ${{ github.event.inputs.run_name }}
+  
 # ============================================================
 # PURPOSE:
 # This workflow automates load testing using Artillery for multiple
@@ -206,25 +209,25 @@ jobs:
           
           # TARGET_HOST (e.g., APP1_TARGET_HOST)
           echo "TARGET_HOST=${{ vars[format('{0}_TARGET_HOST', env.APP_UPPER)] }}" >> $GITHUB_ENV
-          # echo "TARGET_HOST=${{ vars[format('{0}_TARGET_HOST', env.APP_UPPER)] }}" # For debugging
+          echo "TARGET_HOST=${{ vars[format('{0}_TARGET_HOST', env.APP_UPPER)] }}" # For debugging
           
           # REGION (e.g., APP1_REGION)
           echo "REGION=${{ vars[format('{0}_REGION', env.APP_UPPER)] }}" >> $GITHUB_ENV
-          # echo "REGION=${{ vars[format('{0}_REGION', env.APP_UPPER)] }}" # For debugging
+          echo "REGION=${{ vars[format('{0}_REGION', env.APP_UPPER)] }}" # For debugging
 
           # --- Sensitive Variables (from GitHub Environment Secrets) ---
           
           # API_KEY (e.g., APP1_API_KEY)
           echo "API_KEY=${{ secrets[format('{0}_API_KEY', env.APP_UPPER)] }}" >> $GITHUB_ENV
-          # echo "API_KEY=***" # For debugging
+          echo "API_KEY=***" # For debugging
           
           # ACCESS_KEY (e.g., APP1_ACCESS_KEY)
           echo "ACCESS_KEY=${{ secrets[format('{0}_ACCESS_KEY', env.APP_UPPER)] }}" >> $GITHUB_ENV
-          # echo "ACCESS_KEY=***" # For debugging
+          echo "ACCESS_KEY=***" # For debugging
           
           # SECRET_KEY (e.g., APP1_SECRET_KEY)
           echo "SECRET_KEY=${{ secrets[format('{0}_SECRET_KEY', env.APP_UPPER)] }}" >> $GITHUB_ENV
-          # echo "SECRET_KEY=***" # For debugging
+          echo "SECRET_KEY=***" # For debugging
           
           echo "✅ Environment variables mapped for $APP_UPPER. Sensitive values hidden."
           
