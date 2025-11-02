@@ -188,16 +188,52 @@ jobs:
           npm install aws4 @faker-js/faker csv-parse
           npm install --save-dev artillery-plugin-metrics-by-endpoint
           artillery --version
+          
+      # -----------------------------
+      # Map Environment Variables 
+      # -----------------------------
+      - name: Map Environment Variables
+        run: |
+          # Convert app_name (e.g., 'app1') to uppercase (e.g., 'APP1')
+          APP_UPPER=$(echo "${{ github.event.inputs.app_name }}" | tr '[:lower:]' '[:upper:]')
+          echo "APP_UPPER=$APP_UPPER" >> $GITHUB_ENV
+          
+          # --- Environment Variables (from GitHub Environment Vars) ---
+          
+          # BASE_URL (e.g., APP1_BASE_URL)
+          echo "BASE_URL=${{ vars[format('{0}_BASE_URL', env.APP_UPPER)] }}" >> $GITHUB_ENV
+          # echo "BASE_URL=${{ vars[format('{0}_BASE_URL', env.APP_UPPER)] }}" # For debugging
+          
+          # TARGET_HOST (e.g., APP1_TARGET_HOST)
+          echo "TARGET_HOST=${{ vars[format('{0}_TARGET_HOST', env.APP_UPPER)] }}" >> $GITHUB_ENV
+          # echo "TARGET_HOST=${{ vars[format('{0}_TARGET_HOST', env.APP_UPPER)] }}" # For debugging
+          
+          # REGION (e.g., APP1_REGION)
+          echo "REGION=${{ vars[format('{0}_REGION', env.APP_UPPER)] }}" >> $GITHUB_ENV
+          # echo "REGION=${{ vars[format('{0}_REGION', env.APP_UPPER)] }}" # For debugging
 
+          # --- Sensitive Variables (from GitHub Environment Secrets) ---
+          
+          # API_KEY (e.g., APP1_API_KEY)
+          echo "API_KEY=${{ secrets[format('{0}_API_KEY', env.APP_UPPER)] }}" >> $GITHUB_ENV
+          # echo "API_KEY=***" # For debugging
+          
+          # ACCESS_KEY (e.g., APP1_ACCESS_KEY)
+          echo "ACCESS_KEY=${{ secrets[format('{0}_ACCESS_KEY', env.APP_UPPER)] }}" >> $GITHUB_ENV
+          # echo "ACCESS_KEY=***" # For debugging
+          
+          # SECRET_KEY (e.g., APP1_SECRET_KEY)
+          echo "SECRET_KEY=${{ secrets[format('{0}_SECRET_KEY', env.APP_UPPER)] }}" >> $GITHUB_ENV
+          # echo "SECRET_KEY=***" # For debugging
+          
+          echo "✅ Environment variables mapped for $APP_UPPER. Sensitive values hidden."
+          
       # -----------------------------
       # Run Artillery Test
       # -----------------------------
       - name: Run Artillery Test
         env:
-          BASE_URL: ${{ vars.BASE_URL }}
-          API_KEY: ${{ secrets.API_KEY }}
           AUTH_HEADER: ${{ secrets.AUTH_HEADER }}
-          AWS_REGION : ${{ vars.AWS_REGION }}
         run: |
           # Prepare directories
           REPORT_DIR="./reports/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}"
