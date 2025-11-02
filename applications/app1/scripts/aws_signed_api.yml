@@ -1,0 +1,44 @@
+config:
+  target: "https://{{ $processEnvironment.BASE_URL }}"
+  processor: "../../shared/custom-artillery-utils.js"
+  phases:
+    - duration: 300
+      arrivalRate: 2
+      name: CSV Payload Test
+  plugins:
+    metrics-by-endpoint: {}
+
+  ensure:
+    - "http.response_time.p99": 500
+    - "http.response_code.4xx": { max_error_rate: 0.01 }
+    - "http.response_code.5xx": { max_error_rate: 0.01 }
+
+  payload:
+    path: "../data/users.csv"
+    fields:
+      - "name"
+      - "age"
+      - "city"
+
+scenarios:
+  - name: Signed GET /secure
+    beforeRequest: signRequest
+    afterResponse: afterResponse
+    flow:
+      - get:
+          url: "/prod/secure"
+      - log: "✅ Completed signed GET request"
+
+  - name: Signed POST /secure (CSV Data)
+    beforeRequest: signRequest
+    afterResponse: afterResponse
+    flow:
+      - post:
+          url: "/prod/secure"
+          json:
+            name: "{{ name }}"
+            age: "{{ age }}"
+            city: "{{ city }}"
+          expect:
+            - statusCode: 200
+      - log: "📦 Sent POST with CSV record: {{ name }}, {{ age }}, {{ city }}"
