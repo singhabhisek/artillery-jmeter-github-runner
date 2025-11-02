@@ -1,5 +1,5 @@
 config:
-  target: "https://79ew9ywiya.execute-api.us-east-2.amazonaws.com/prod"
+  target: "{{ $processEnvironment.BASE_URL }}"
   phases:
     - duration: 60
       arrivalRate: 2
@@ -35,6 +35,7 @@ scenarios:
             last_name: "{{ last_name }}"
             email: "{{ email }}"
           afterResponse: "captureErrors"
+
 
 
 
