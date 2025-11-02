@@ -274,48 +274,39 @@ jobs:
       # -----------------------------
       # Map Environment Variables 
       # -----------------------------
-      - name: Map Environment Variables
+      - name: Map Environment Variables Dynamically
+        shell: bash
         run: |
-          # Convert app_name (e.g., 'app1') to uppercase (e.g., 'APP1')
+          # Convert app_name input to uppercase (e.g., "app1" -> "APP1")
           APP_UPPER=$(echo "${{ github.event.inputs.app_name }}" | tr '[:lower:]' '[:upper:]')
-          echo "APP_UPPER=$APP_UPPER" >> $GITHUB_ENV
-          
-          # --- Set to SHELL Variables first, then export to GITHUB_ENV ---
-          
-          # BASE_URL (e.g., APP1_BASE_URL)
-          # Store the result in a shell variable first
-          BASE_URL="${{ vars[format('{0}_BASE_URL', env.APP_UPPER)] }}"
-          echo "BASE_URL=$BASE_URL" >> $GITHUB_ENV
-          # echo "BASE_URL=$BASE_URL" # For debugging - SAFE TO UNCOMMENT
-          
-          # TARGET_HOST (e.g., APP1_TARGET_HOST)
-          TARGET_HOST="${{ vars[format('{0}_TARGET_HOST', env.APP_UPPER)] }}"
-          echo "TARGET_HOST=$TARGET_HOST" >> $GITHUB_ENV
-          # echo "TARGET_HOST=$TARGET_HOST" # For debugging - SAFE TO UNCOMMENT
-          
-          # REGION (e.g., APP1_REGION)
-          REGION="${{ vars[format('{0}_REGION', env.APP_UPPER)] }}"
-          echo "REGION=$REGION" >> $GITHUB_ENV
-          # echo "REGION=$REGION" # For debugging - SAFE TO UNCOMMENT
 
-          # --- Sensitive Variables (Secrets, kept secure) ---
-          
-          # API_KEY (e.g., APP1_API_KEY)
-          API_KEY="${{ secrets[format('{0}_API_KEY', env.APP_UPPER)] }}"
-          echo "API_KEY=$API_KEY" >> $GITHUB_ENV
-          # echo "API_KEY=***" # For debugging
-          
-          # ACCESS_KEY (e.g., APP1_ACCESS_KEY)
-          ACCESS_KEY="${{ secrets[format('{0}_ACCESS_KEY', env.APP_UPPER)] }}"
-          echo "ACCESS_KEY=$ACCESS_KEY" >> $GITHUB_ENV
-          # echo "ACCESS_KEY=***" # For debugging
-          
-          # SECRET_KEY (e.g., APP1_SECRET_KEY)
-          SECRET_KEY="${{ secrets[format('{0}_SECRET_KEY', env.APP_UPPER)] }}"
-          echo "SECRET_KEY=$SECRET_KEY" >> $GITHUB_ENV
-          # echo "SECRET_KEY=***" # For debugging
-          
-          echo "✅ Environment variables mapped for $APP_UPPER. Sensitive values hidden."
+          # Map repository variables (vars)
+          BASE_URL_VAR="${APP_UPPER}_BASE_URL"
+          TARGET_HOST_VAR="${APP_UPPER}_TARGET_HOST"
+          REGION_VAR="${APP_UPPER}_REGION"
+
+          # Map secrets
+          ACCESS_KEY_VAR="${APP_UPPER}_ACCESS_KEY"
+          SECRET_KEY_VAR="${APP_UPPER}_SECRET_KEY"
+
+          # Use indirect expansion to get the values
+          BASE_URL="${!BASE_URL_VAR}"
+          TARGET_HOST="${!TARGET_HOST_VAR}"
+          REGION="${!REGION_VAR}"
+          ACCESS_KEY="${!ACCESS_KEY_VAR}"
+          SECRET_KEY="${!SECRET_KEY_VAR}"
+
+          # Export to GitHub Actions environment
+          echo "BASE_URL=$BASE_URL" >> $GITHUB_ENV
+          echo "TARGET_HOST=$TARGET_HOST" >> $GITHUB_ENV
+          echo "REGION=$REGION" >> $GITHUB_ENV
+          echo "ACCESS_KEY=***" >> $GITHUB_ENV
+          echo "SECRET_KEY=***" >> $GITHUB_ENV
+
+          echo "✅ Environment variables mapped for $APP_UPPER"
+          echo "BASE_URL=$BASE_URL"
+          echo "TARGET_HOST=$TARGET_HOST"
+          echo "REGION=$REGION"
           
       # -----------------------------
       # Run Artillery Test
