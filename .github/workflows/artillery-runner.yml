@@ -419,131 +419,131 @@ jobs:
 # ============================================================
 # JOB 3: Aggregate results after all runners finish
 # ============================================================
-aggregate-reports:
-  if: always()
-  name: "Aggregate & Upload Final Reports"
-  runs-on: ubuntu-latest
-  needs: [set-test-name, run-artillery]
-
-  steps:
-    # -------------------------------
-    # Checkout repository
-    # -------------------------------
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    # -------------------------------
-    # Collect all runner artifacts (JSON, HTML, system logs)
-    # -------------------------------
-    - name: Collect runner artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: ./downloaded-artifacts
-
-    # -------------------------------
-    # Organize everything into ./_reports
-    # -------------------------------
-    - name: Organize all reports
-      shell: bash
-      run: |
-        mkdir -p ./_reports
-        find ./downloaded-artifacts -type f -name "*.json" -exec cp {} ./_reports/ \; || true
-        find ./downloaded-artifacts -type f -name "*.html" -exec cp {} ./_reports/ \; || true
-        find ./downloaded-artifacts -type f -name "*.log" -exec cp {} ./_reports/ \; || true
-        echo "✅ Merged all runner JSON/HTML/log files into ./_reports"
-
-    # -------------------------------
-    # Determine consolidated test name
-    # -------------------------------
-    - name: Determine consolidated test name
-      id: test_name
-      shell: bash
-      run: |
-        CONSOLIDATED_NAME="${{ needs.set-test-name.outputs.final_test_name }}"
-        echo "consolidated_test_name=$CONSOLIDATED_NAME" >> $GITHUB_OUTPUT
-        echo "✅ Using consolidated test name: $CONSOLIDATED_NAME"
-
-    # -------------------------------
-    # Collect all JSON filenames
-    # -------------------------------
-    - name: Collect JSON files
-      id: collect_jsons
-      shell: bash
-      run: |
-        JSON_FILES=$(find ./_reports -name '*.json' -type f | paste -sd "," -)
-        if [ -z "$JSON_FILES" ]; then
-          echo "⚠️ No JSON files found, skipping dashboard generation."
-          echo "json_files=" >> $GITHUB_OUTPUT
-          exit 0
-        fi
-        echo "json_files=$JSON_FILES" >> $GITHUB_OUTPUT
-        echo "✅ Found JSON files: $JSON_FILES"
-
-    # -------------------------------
-    # Setup Python environment
-    # -------------------------------
-    - name: Setup Python
-      if: ${{ steps.collect_jsons.outputs.json_files != '' }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.13.1"
-
-    - name: Install Python dependencies
-      if: ${{ steps.collect_jsons.outputs.json_files != '' }}
-      run: |
-        python -m pip install --upgrade pip
-        pip install pandas pyyaml plotly numpy
-
-    # -------------------------------
-    # Generate consolidated Python dashboard
-    # -------------------------------
-    - name: Generate consolidated dashboard
-      if: ${{ steps.collect_jsons.outputs.json_files != '' }}
-      shell: bash
-      run: |
-        FINAL_HTML="./_reports/${{ steps.test_name.outputs.consolidated_test_name }}-dashboard.html"
-        ARGS=""
-        [ -n "${{ env.PY_APP_NAME }}" ] && ARGS="$ARGS --app-name \"${{ env.PY_APP_NAME }}\""
-        [ -n "${{ env.PY_TEST_NAME }}" ] && ARGS="$ARGS --test-name \"${{ env.PY_TEST_NAME }}\""
-        [ -n "${{ env.PY_SLA }}" ] && ARGS="$ARGS --sla \"${{ env.PY_SLA }}\""
-        [ -n "${{ env.PY_MODE }}" ] && ARGS="$ARGS --mode \"${{ env.PY_MODE }}\""
-        [ -n "${{ env.PY_GRANULARITY }}" ] && ARGS="$ARGS --granularity \"${{ env.PY_GRANULARITY }}\""
-        [ -n "${{ env.PY_SHOW_OVERALL_METRICS }}" ] && ARGS="$ARGS --show-overall-metrics"
-
-        echo "📊 Generating consolidated dashboard..."
-        python "${GITHUB_WORKSPACE}/utilities/generate_artillery_dashboard.py" \
-          --json "${{ steps.collect_jsons.outputs.json_files }}" \
-          --yaml "${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}" \
-          --output "$FINAL_HTML" \
-          $ARGS || echo "⚠️ Dashboard generation failed, continuing."
-
-        echo "✅ Consolidated dashboard generated: $FINAL_HTML"
-        echo "final_html=$FINAL_HTML" >> $GITHUB_OUTPUT
-
-    # -------------------------------
-    # Package all results
-    # -------------------------------
-    - name: Package consolidated results
-      shell: bash
-      run: |
-        mkdir -p final-upload
-        cp ./_reports/*.json final-upload/ 2>/dev/null || true
-        cp ./_reports/*.html final-upload/ 2>/dev/null || true
-        cp ./_reports/*.log final-upload/ 2>/dev/null || true
-        zip -r consolidated-results.zip final-upload >/dev/null
-        echo "✅ Packaged consolidated-results.zip"
-
-    # -------------------------------
-    # Upload final artifacts
-    # -------------------------------
-    - name: Upload consolidated artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: consolidated-artillery-results
-        path: consolidated-results.zip
-
+  aggregate-reports:
+    if: always()
+    name: "Aggregate & Upload Final Reports"
+    runs-on: ubuntu-latest
+    needs: [set-test-name, run-artillery]
+  
+    steps:
+      # -------------------------------
+      # Checkout repository
+      # -------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+  
+      # -------------------------------
+      # Collect all runner artifacts (JSON, HTML, system logs)
+      # -------------------------------
+      - name: Collect runner artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./downloaded-artifacts
+  
+      # -------------------------------
+      # Organize everything into ./_reports
+      # -------------------------------
+      - name: Organize all reports
+        shell: bash
+        run: |
+          mkdir -p ./_reports
+          find ./downloaded-artifacts -type f -name "*.json" -exec cp {} ./_reports/ \; || true
+          find ./downloaded-artifacts -type f -name "*.html" -exec cp {} ./_reports/ \; || true
+          find ./downloaded-artifacts -type f -name "*.log" -exec cp {} ./_reports/ \; || true
+          echo "✅ Merged all runner JSON/HTML/log files into ./_reports"
+  
+      # -------------------------------
+      # Determine consolidated test name
+      # -------------------------------
+      - name: Determine consolidated test name
+        id: test_name
+        shell: bash
+        run: |
+          CONSOLIDATED_NAME="${{ needs.set-test-name.outputs.final_test_name }}"
+          echo "consolidated_test_name=$CONSOLIDATED_NAME" >> $GITHUB_OUTPUT
+          echo "✅ Using consolidated test name: $CONSOLIDATED_NAME"
+  
+      # -------------------------------
+      # Collect all JSON filenames
+      # -------------------------------
+      - name: Collect JSON files
+        id: collect_jsons
+        shell: bash
+        run: |
+          JSON_FILES=$(find ./_reports -name '*.json' -type f | paste -sd "," -)
+          if [ -z "$JSON_FILES" ]; then
+            echo "⚠️ No JSON files found, skipping dashboard generation."
+            echo "json_files=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          echo "json_files=$JSON_FILES" >> $GITHUB_OUTPUT
+          echo "✅ Found JSON files: $JSON_FILES"
+  
+      # -------------------------------
+      # Setup Python environment
+      # -------------------------------
+      - name: Setup Python
+        if: ${{ steps.collect_jsons.outputs.json_files != '' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.1"
+  
+      - name: Install Python dependencies
+        if: ${{ steps.collect_jsons.outputs.json_files != '' }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas pyyaml plotly numpy
+  
+      # -------------------------------
+      # Generate consolidated Python dashboard
+      # -------------------------------
+      - name: Generate consolidated dashboard
+        if: ${{ steps.collect_jsons.outputs.json_files != '' }}
+        shell: bash
+        run: |
+          FINAL_HTML="./_reports/${{ steps.test_name.outputs.consolidated_test_name }}-dashboard.html"
+          ARGS=""
+          [ -n "${{ env.PY_APP_NAME }}" ] && ARGS="$ARGS --app-name \"${{ env.PY_APP_NAME }}\""
+          [ -n "${{ env.PY_TEST_NAME }}" ] && ARGS="$ARGS --test-name \"${{ env.PY_TEST_NAME }}\""
+          [ -n "${{ env.PY_SLA }}" ] && ARGS="$ARGS --sla \"${{ env.PY_SLA }}\""
+          [ -n "${{ env.PY_MODE }}" ] && ARGS="$ARGS --mode \"${{ env.PY_MODE }}\""
+          [ -n "${{ env.PY_GRANULARITY }}" ] && ARGS="$ARGS --granularity \"${{ env.PY_GRANULARITY }}\""
+          [ -n "${{ env.PY_SHOW_OVERALL_METRICS }}" ] && ARGS="$ARGS --show-overall-metrics"
+  
+          echo "📊 Generating consolidated dashboard..."
+          python "${GITHUB_WORKSPACE}/utilities/generate_artillery_dashboard.py" \
+            --json "${{ steps.collect_jsons.outputs.json_files }}" \
+            --yaml "${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}" \
+            --output "$FINAL_HTML" \
+            $ARGS || echo "⚠️ Dashboard generation failed, continuing."
+  
+          echo "✅ Consolidated dashboard generated: $FINAL_HTML"
+          echo "final_html=$FINAL_HTML" >> $GITHUB_OUTPUT
+  
+      # -------------------------------
+      # Package all results
+      # -------------------------------
+      - name: Package consolidated results
+        shell: bash
+        run: |
+          mkdir -p final-upload
+          cp ./_reports/*.json final-upload/ 2>/dev/null || true
+          cp ./_reports/*.html final-upload/ 2>/dev/null || true
+          cp ./_reports/*.log final-upload/ 2>/dev/null || true
+          zip -r consolidated-results.zip final-upload >/dev/null
+          echo "✅ Packaged consolidated-results.zip"
+  
+      # -------------------------------
+      # Upload final artifacts
+      # -------------------------------
+      - name: Upload consolidated artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: consolidated-artillery-results
+          path: consolidated-results.zip
+  
           
 # ============================================================
 # JOB 4: Cleanup (Only deletes old reports and artifacts)
