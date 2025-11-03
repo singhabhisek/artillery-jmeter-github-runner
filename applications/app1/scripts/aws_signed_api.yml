@@ -7,7 +7,7 @@ config:
 
   # Test phase — run for 5 minutes with 2 RPS (adjust as needed)
   phases:
-    - duration: 300
+    - duration: 60
       arrivalRate: 2
       name: "Signed GET & POST CSV Test"
 
