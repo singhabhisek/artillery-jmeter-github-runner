@@ -333,8 +333,9 @@ jobs:
         run: |
           mkdir -p "${{ env.REPORT_DIR }}"
 
-          JSON_OUT="${{ env.REPORT_DIR }}/result-runner-${{ matrix.runner_index }}.json"
-          HTML_OUT="${{ env.REPORT_DIR }}/report-runner-${{ matrix.runner_index }}.html"
+          #JSON_OUT="${{ env.REPORT_DIR }}/result-runner-${{ matrix.runner_index }}.json"
+          JSON_OUT="${{ env.REPORT_DIR }}/result_runner_${{ matrix.runner_index }}.json"
+          HTML_OUT="${{ env.REPORT_DIR }}/report_runner_${{ matrix.runner_index }}.html"
 
           echo "JSON_OUT : $JSON_OUT"
           echo "HTML_OUT : $HTML_OUT"
@@ -386,7 +387,8 @@ jobs:
         shell: bash
         run: |
           DASHBOARD_HTML="${{ env.REPORT_DIR }}/dashboard-runner-${{ matrix.runner_index }}.html"
-          JSON_FILE="${{ env.REPORT_DIR }}/result-runner-${{ matrix.runner_index }}.json"
+          #JSON_OUT="${{ env.REPORT_DIR }}/result_runner_${{ matrix.runner_index }}.json"
+          JSON_FILE="${{ env.REPORT_DIR }}/result_runner_${{ matrix.runner_index }}.json"
           echo "📊 Generating Python dashboard for runner ${{ matrix.runner_index }}..."
 
           ARGS=""
