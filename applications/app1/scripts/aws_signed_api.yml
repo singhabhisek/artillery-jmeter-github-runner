@@ -45,7 +45,7 @@ scenarios:
           capture:
             - json: "$"
               as: getResponse
-      - log: "✅ Completed signed GET request: {{ getResponse }}"
+      # - log: "✅ Completed signed GET request: {{ getResponse }}"
 
   # --------------------------------------
   # Scenario 2: Signed POST /secure (CSV Driven)
@@ -69,4 +69,4 @@ scenarios:
             - json: "$"
               as: postResponse
       - log: "📦 Sent POST with CSV data: Name={{ name }}, Age={{ age }}, City={{ city }}"
-      - log: "📩 Response: {{ postResponse }}"
+      # - log: "📩 Response: {{ postResponse }}"
