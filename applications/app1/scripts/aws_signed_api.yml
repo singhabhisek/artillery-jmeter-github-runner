@@ -1,44 +1,72 @@
 config:
+  # The base target comes from the GitHub Action environment variable
   target: "https://{{ $processEnvironment.TARGET_HOST }}"
+
+  # Custom processor file — handles AWS SigV4 signing, response logging, etc.
   processor: "../../../utilities/custom-artillery-utils.js"
+
+  # Test phase — run for 5 minutes with 2 RPS (adjust as needed)
   phases:
     - duration: 300
       arrivalRate: 2
-      name: CSV Payload Test
+      name: "Signed GET & POST CSV Test"
+
   plugins:
     metrics-by-endpoint: {}
 
+  # ✅ Add service-level assertions
   ensure:
-    - "http.response_time.p99": 500
+    - "http.response_time.p99": 500        # 99th percentile latency must be < 500ms
     - "http.response_code.4xx": { max_error_rate: 0.01 }
     - "http.response_code.5xx": { max_error_rate: 0.01 }
 
+  # ✅ Use CSV-based payload for POST requests
   payload:
-    path: "../data/user_city.csv"
+    path: "../data/user_city.csv"          # Relative path to your CSV file
     fields:
       - "name"
       - "age"
       - "city"
+    skipHeader: true                       # If the first row is header
 
 scenarios:
-  - name: Signed GET /secure
+  # --------------------------------------
+  # Scenario 1: Signed GET /get/secure
+  # --------------------------------------
+  - name: "1. Signed GET /get/secure"
     beforeRequest: signRequest
     afterResponse: afterResponse
+    weight: 1
     flow:
       - get:
-          url: "/prod/secure"
-      - log: "✅ Completed signed GET request"
+          url: "/prod/get/secure"
+          headers:
+            Accept: "application/json"
+          capture:
+            - json: "$"
+              as: getResponse
+      - log: "✅ Completed signed GET request: {{ getResponse }}"
 
-  - name: Signed POST /secure (CSV Data)
+  # --------------------------------------
+  # Scenario 2: Signed POST /secure (CSV Driven)
+  # --------------------------------------
+  - name: "2. Signed POST /secure (CSV Driven)"
     beforeRequest: signRequest
     afterResponse: afterResponse
+    weight: 1
     flow:
       - post:
           url: "/prod/secure"
+          headers:
+            Content-Type: "application/json"
           json:
             name: "{{ name }}"
             age: "{{ age }}"
             city: "{{ city }}"
           expect:
             - statusCode: 200
-      - log: "📦 Sent POST with CSV record: {{ name }}, {{ age }}, {{ city }}"
+          capture:
+            - json: "$"
+              as: postResponse
+      - log: "📦 Sent POST with CSV data: Name={{ name }}, Age={{ age }}, City={{ city }}"
+      - log: "📩 Response: {{ postResponse }}"
