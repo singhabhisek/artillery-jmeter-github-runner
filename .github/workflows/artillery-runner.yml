@@ -214,6 +214,7 @@ jobs:
         if: ${{ github.event.inputs.monitor_system == 'true' }}
         shell: bash
         run: |
+          mkdir -p "$REPORT_DIR"
           LOG_FILE="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-system.log"
           echo "timestamp,cpu_user,cpu_system,cpu_idle,mem_used,mem_free" > $LOG_FILE
           monitor() {
