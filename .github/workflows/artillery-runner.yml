@@ -5,44 +5,57 @@ run-name: >
 
 # ============================================================
 # PURPOSE:
-# Automates load testing with Artillery for multiple applications.
-# Features:
-#   - Run parallel tests across multiple GitHub runners
-#   - Aggregate results and generate dashboards
-#   - Cleanup old reports/artifacts
+# This workflow automates load testing using Artillery for multiple
+# applications and environments (test/prod). It can:
+#  - Run parallel tests across multiple GitHub runners
+#  - Aggregate results and generate dashboards
+#  - Clean up old reports/artifacts when requested
 # ============================================================
 
+# ============================================================
+# Trigger: Manual dispatch via GitHub UI with input parameters
+# ============================================================
 on:
   workflow_dispatch:
     inputs:
       test_type:
-        description: "Choose test type: 'load' or 'cleanup'"
+        description: "Choose test type: 'load' to run tests, or 'cleanup' to delete old reports/artifacts"
         required: true
         type: choice
-        options: [load, cleanup]
+        options:
+          - load
+          - cleanup
 
       environment_name:
         description: "Select environment (test or prod)"
         required: true
         type: choice
-        options: [test, prod]
+        options:
+          - test
+          - prod
 
       app_name:
         description: "Application to test (e.g., app1, app2)"
         required: true
         type: choice
-        options: [app1, app2]
+        options:
+          - app1
+          - app2
 
       runners_to_use:
         description: "Number of parallel runners to use (1–4)"
         required: true
         type: choice
-        options: ['1','2','3','4']
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '4'
 
       scenario_file:
-        description: "YAML file for Artillery scenario"
+        description: "YAML file(s) for Artillery scenario (e.g., loadtest.yml or file1.yml,file2.yml)"
         required: true
-        default: "aws_signed_api.yml ,aws_api.yml"
+        default: "aws_signed_api.yml,aws_api.yml" # Removed space for cleaner handling
 
       test_name:
         description: "Optional test name (blank = auto-generated)"
@@ -55,22 +68,26 @@ on:
         default: ""
 
       monitor_system:
-        description: "Enable runner CPU/memory monitoring?"
+        description: "Enable runner CPU/memory monitoring during tests?"
         required: false
         type: choice
-        options: ["true","false"]
+        options:
+          - "true"
+          - "false"
         default: "false"
 
       cleanup_days:
-        description: "Delete reports/artifacts older than X days (cleanup mode)"
+        description: "Delete reports/artifacts older than X days (used in cleanup mode)"
         required: false
         default: "7"
 
       print_machine_info:
-        description: "Print machine info before running?"
+        description: "Print machine details before running?"
         required: false
         type: choice
-        options: ["true","false"]
+        options:
+          - "true"
+          - "false"
         default: "false"
 
 # ============================================================
@@ -82,14 +99,17 @@ env:
   SCRIPTS_DIR: "./applications/${{ github.event.inputs.app_name }}/scripts"
   DATA_DIR: "./applications/${{ github.event.inputs.app_name }}/data"
 
-  # Python script environment variables
+  # -------------------------------
+  # Variables for Python script environment (Requirement 2)
+  # -------------------------------
   PY_APP_NAME: ${{ github.event.inputs.app_name }}
-  PY_TEST_NAME: ${{ github.event.inputs.test_name }}        
-  PY_RUN_ID: ${{ github.event.inputs.run_name }}            
-  PY_SLA: ""                                               
-  PY_MODE: ""                                              
-  PY_GRANULARITY: ""                                       
-  PY_SHOW_OVERALL_METRICS: ""                              
+  PY_TEST_NAME: ${{ github.event.inputs.test_name }}
+  PY_RUN_ID: ${{ github.event.inputs.run_name }}
+  PY_SLA: ""
+  PY_MODE: ""
+  PY_GRANULARITY: ""
+  PY_SHOW_OVERALL_METRICS: ""
+
 
 # ============================================================
 # JOB 1: Set test name dynamically
@@ -99,13 +119,18 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       final_test_name: ${{ steps.determine.outputs.final_test_name }}
+
     steps:
       - id: determine
         run: |
+          # ----------------------------------------------------
+          # Dynamically build the test name using inputs
+          # ----------------------------------------------------
           DATE_MMDDYYYY=$(date +%m%d%Y)
           DATE_YYYYMMDD=$(date +%Y%m%d)
           BASE_NAME="artillery"
 
+          # Construct name based on which inputs are given
           if [ -n "${{ github.event.inputs.test_name }}" ] && [ -n "${{ github.event.inputs.run_name }}" ]; then
             FINAL_NAME="${BASE_NAME}-${{ github.event.inputs.test_name }}-${{ github.event.inputs.run_name }}"
           elif [ -n "${{ github.event.inputs.test_name }}" ]; then
@@ -120,46 +145,52 @@ jobs:
           echo "final_test_name=$FINAL_NAME" >> $GITHUB_OUTPUT
 
 # ============================================================
-# JOB 2: Run Artillery tests in parallel
+# JOB 2: Run Artillery tests in parallel (if test_type == load)
 # ============================================================
   run-artillery:
     if: ${{ github.event.inputs.test_type == 'load' }}
     name: "Run Artillery Tests"
     runs-on: ubuntu-latest
     needs: set-test-name
+
+    # Use environment-specific secrets/variables (test/prod)
     environment: ${{ github.event.inputs.environment_name }}
+
     strategy:
       fail-fast: false
       matrix:
         runner_index: [1, 2, 3, 4]
+
     steps:
       # -------------------------------
-      # Set REPORT_DIR at top-level
+      # Set REPORT_DIR using the output from the set-test-name job
       # -------------------------------
       - name: Set job environment variables
+        id: set_env
         run: |
-          export REPORT_DIR="${{ github.workspace }}/_reports"
+          # Set REPORT_DIR and ensure the folder exists
+          REPORT_DIR="${{ github.workspace }}/_reports"
           mkdir -p "$REPORT_DIR"
           echo "REPORT_DIR=$REPORT_DIR" >> $GITHUB_ENV
           echo "REPORT_DIR location: $REPORT_DIR"
 
-      # -------------------------------
+      # -----------------------------
       # Skip unused runners
-      # -------------------------------
+      # -----------------------------
       - name: Skip Unused Runner
         if: ${{ matrix.runner_index > fromJSON(github.event.inputs.runners_to_use) }}
         run: |
           echo "Skipping runner ${{ matrix.runner_index }}"
           exit 0
 
-      # -------------------------------
+      # -----------------------------
       # Checkout source code
-      # -------------------------------
+      # -----------------------------
       - uses: actions/checkout@v4
 
-      # -------------------------------
-      # Optional: Print machine info
-      # -------------------------------
+      # -----------------------------
+      # Optional: Print runner details
+      # -----------------------------
       - name: Print Machine Info
         if: ${{ github.event.inputs.print_machine_info == 'true' }}
         run: |
@@ -170,39 +201,65 @@ jobs:
           echo "========================"
 
       # -------------------------------
-      # Setup Python & dependencies
+      # Setup Python environment
       # -------------------------------
       - name: Setup Python
+        if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13.1"
+          python-version: "3.11" # Changed from 3.13.1 (pre-release) to stable 3.11
+
+      # -------------------------------
+      # Install Python dependencies
+      # -------------------------------
       - name: Install Python Dependencies
+        if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         run: |
           python -m pip install --upgrade pip
           pip install pandas plotly numpy pyyaml
 
       # -------------------------------
-      # Verify scenario YAML exists
+      # Install system utilities for monitoring
       # -------------------------------
-      - name: Check scenario YAML exists
-        shell: bash
-        run: |
-          if [ ! -f "${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}" ]; then
-            echo "Scenario file not found!"
-            exit 1
-          fi
-          echo "Found scenario file: ${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}"
+      - name: Install system monitoring utilities (sysstat)
+        if: ${{ github.event.inputs.monitor_system == 'true' && matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
+        run: sudo apt-get update && sudo apt-get install -y sysstat
 
       # -------------------------------
-      # Setup Node.js & Artillery
+      # Ensure scenario YAML exists
       # -------------------------------
+      - name: Check scenario YAML exists
+        if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
+        shell: bash
+        run: |
+          # Split the input string by comma and take the first item to check its existence.
+          SCENARIO_FILE=$(echo "${{ github.event.inputs.scenario_file }}" | awk -F ',' '{print $1}' | xargs)
+          FULL_PATH="${{ env.SCRIPTS_DIR }}/$SCENARIO_FILE"
+
+          if [ ! -f "$FULL_PATH" ]; then
+            echo "::error file=$FULL_PATH::Scenario file not found: $FULL_PATH"
+            exit 1
+          else
+            echo "Found primary scenario file: $FULL_PATH"
+          fi
+
+      # -----------------------------
+      # Setup Node.js environment
+      # -----------------------------
       - name: Setup Node.js
+        if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Install Artillery
+
+      # -----------------------------
+      # Install Artillery globally and dependencies
+      # -----------------------------
+      - name: Install Artillery and Node Dependencies
+        if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         run: |
           npm install -g artillery@${{ env.ARTILLERY_VERSION }}
+          # Install Node dependencies needed by test scripts
           npm install aws4 @faker-js/faker csv-parse
           npm install --save-dev artillery-plugin-metrics-by-endpoint
           artillery --version
@@ -211,98 +268,166 @@ jobs:
       # Optional System Monitoring
       # -------------------------------
       - name: Start system monitoring (optional)
-        if: ${{ github.event.inputs.monitor_system == 'true' }}
+        if: ${{ github.event.inputs.monitor_system == 'true' && matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         shell: bash
         run: |
-          mkdir -p "$REPORT_DIR"
+          mkdir -p "${{ env.REPORT_DIR }}"
           LOG_FILE="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-system.log"
           echo "timestamp,cpu_user,cpu_system,cpu_idle,mem_used,mem_free" > $LOG_FILE
+          # Note: mpstat is used here to get CPU usage
           monitor() {
             while true; do
               ts=$(date +"%Y-%m-%d %H:%M:%S")
+              # Get CPU stats (user, system, idle)
               cpu=$(mpstat 1 1 | awk '/Average/ {print $3","$5","$12}')
+              # Get Memory stats (used, free in MB)
               mem=$(free -m | awk '/Mem:/ {print $3","$4}')
               echo "$ts,$cpu,$mem" >> $LOG_FILE
-              sleep 180
+              sleep 180 # Log every 3 minutes
             done
           }
-          monitor & echo $! > /tmp/monitor_pid.txt
-          echo "System monitoring started in background."
+          monitor &
+          echo $! > /tmp/monitor_pid.txt
+          echo "System monitoring started in background, logging every 3 minutes."
 
-      # -------------------------------
-      # Map environment variables dynamically
-      # -------------------------------
+      # -----------------------------
+      # Map Environment Variables
+      # -----------------------------
       - name: Map Environment Variables Dynamically
+        if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         shell: bash
+        env:
+          # Use vars context to retrieve dynamic variables based on app_name input
+          APP_BASE_URL: ${{ vars[format('{0}_BASE_URL', github.event.inputs.app_name)] }}
+          APP_TARGET_HOST: ${{ vars[format('{0}_TARGET_HOST', github.event.inputs.app_name)] }}
+          APP_REGION: ${{ vars[format('{0}_REGION', github.event.inputs.app_name)] }}
+          # Use secrets context to retrieve dynamic secrets
+          APP_ACCESS_KEY: ${{ secrets[format('{0}_ACCESS_KEY', github.event.inputs.app_name)] }}
+          APP_SECRET_KEY: ${{ secrets[format('{0}_SECRET_KEY', github.event.inputs.app_name)] }}
+          APP_UPPER: ${{ github.event.inputs.app_name }} # Pass app_name to the shell
         run: |
-          APP_UPPER=$(echo "${{ github.event.inputs.app_name }}" | tr '[:lower:]' '[:upper:]')
-          BASE_URL="${!APP_UPPER_BASE_URL}"
-          TARGET_HOST="${!APP_UPPER_TARGET_HOST}"
-          AWS_REGION="${!APP_UPPER_REGION}"
-          AWS_ACCESS_KEY_ID="${!APP_UPPER_ACCESS_KEY}"
-          AWS_SECRET_ACCESS_KEY="${!APP_UPPER_SECRET_KEY}"
-          echo "BASE_URL=$BASE_URL" >> $GITHUB_ENV
-          echo "TARGET_HOST=$TARGET_HOST" >> $GITHUB_ENV
-          echo "AWS_REGION=$AWS_REGION" >> $GITHUB_ENV
-          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
-          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
-          echo "✅ Environment variables mapped for $APP_UPPER"
+          # Convert app_name input to uppercase (e.g., "app1" -> "APP1")
+          APP_UPPER=$(echo "$APP_UPPER" | tr '[:lower:]' '[:upper:]')
 
-      # -------------------------------
+          # Export values to GitHub Actions environment for subsequent steps
+          echo "BASE_URL=$APP_BASE_URL" >> $GITHUB_ENV
+          echo "TARGET_HOST=$APP_TARGET_HOST" >> $GITHUB_ENV
+          echo "AWS_REGION=$APP_REGION" >> $GITHUB_ENV
+          echo "AWS_ACCESS_KEY_ID=$APP_ACCESS_KEY" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$APP_SECRET_KEY" >> $GITHUB_ENV # NOTE: GitHub automatically masks secrets in logs
+
+          echo "✅ Environment variables mapped for $APP_UPPER"
+          echo "BASE_URL=$APP_BASE_URL"
+          echo "TARGET_HOST=$APP_TARGET_HOST"
+          echo "REGION=$APP_REGION"
+
+      # -----------------------------
       # Run Artillery Test
-      # -------------------------------
+      # -----------------------------
       - name: Run Artillery Test
+        if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         id: run_test
         shell: bash
+        env:
+          AUTH_HEADER: ${{ secrets.AUTH_HEADER }}
         run: |
+          mkdir -p "${{ env.REPORT_DIR }}"
+
           JSON_OUT="${{ env.REPORT_DIR }}/result-runner-${{ matrix.runner_index }}.json"
           HTML_OUT="${{ env.REPORT_DIR }}/report-runner-${{ matrix.runner_index }}.html"
 
+          echo "JSON_OUT : $JSON_OUT"
+          echo "HTML_OUT : $HTML_OUT"
+
+          # Pass environment variables to Artillery run command
+          BASE_URL="$BASE_URL" \
+          API_KEY="$API_KEY" \
+          TARGET_HOST="$TARGET_HOST" \
+          AUTH_HEADER="$AUTH_HEADER" \
+          AWS_REGION="$AWS_REGION" \
+          AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+          AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
           npx artillery run "applications/${{ github.event.inputs.app_name }}/scripts/${{ github.event.inputs.scenario_file }}" \
             --output "$JSON_OUT"
+
           npx artillery report "$JSON_OUT" --output "$HTML_OUT"
           echo "✅ Artillery reports generated at: ${{ env.REPORT_DIR }}"
 
       # -------------------------------
-      # Stop system monitoring
+      # Stop system monitoring (optional)
       # -------------------------------
       - name: Stop system monitoring (optional)
-        if: ${{ github.event.inputs.monitor_system == 'true' }}
+        if: ${{ github.event.inputs.monitor_system == 'true' && matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
+        shell: bash
         run: |
           if [ -f /tmp/monitor_pid.txt ]; then
+            # Use '|| true' to prevent failure if process is already gone
             kill $(cat /tmp/monitor_pid.txt) || true
             rm /tmp/monitor_pid.txt
             echo "System monitoring stopped."
           fi
+      
+      # -------------------------------
+      # Upload system monitoring logs (optional)
+      # -------------------------------
+      - name: Upload system monitoring logs (optional)
+        if: ${{ github.event.inputs.monitor_system == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: runner-${{ matrix.runner_index }}-system-logs
+          path: ${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-system.log
 
       # -------------------------------
-      # Generate Python dashboard for runner
+      # Generate Python dashboard for this runner
       # -------------------------------
-      - name: Generate Python dashboard
+      - name: Generate Python dashboard for this runner
+        if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
+        continue-on-error: true
         shell: bash
         run: |
           DASHBOARD_HTML="${{ env.REPORT_DIR }}/dashboard-runner-${{ matrix.runner_index }}.html"
           JSON_FILE="${{ env.REPORT_DIR }}/result-runner-${{ matrix.runner_index }}.json"
+          echo "📊 Generating Python dashboard for runner ${{ matrix.runner_index }}..."
+
+          ARGS=""
+          [ -n "${{ env.PY_APP_NAME }}" ] && ARGS="$ARGS --app-name \"${{ env.PY_APP_NAME }}\""
+          [ -n "${{ env.PY_TEST_NAME }}" ] && ARGS="$ARGS --test-name \"${{ env.PY_TEST_NAME }}\""
+          [ -n "${{ env.PY_SLA }}" ] && ARGS="$ARGS --sla \"${{ env.PY_SLA }}\""
+          [ -n "${{ env.PY_MODE }}" ] && ARGS="$ARGS --mode \"${{ env.PY_MODE }}\""
+          [ -n "${{ env.PY_GRANULARITY }}" ] && ARGS="$ARGS --granularity \"${{ env.PY_GRANULARITY }}\""
+          # PY_SHOW_OVERALL_METRICS is not used as a value, only as a flag check
+          if [ "${{ env.PY_SHOW_OVERALL_METRICS }}" = "true" ]; then ARGS="$ARGS --show-overall-metrics"; fi
+          
           python "${GITHUB_WORKSPACE}/utilities/generate_artillery_dashboard.py" \
             --json "$JSON_FILE" \
             --yaml "${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}" \
-            --output "$DASHBOARD_HTML" || echo "⚠️ Dashboard generation failed"
+            --output "$DASHBOARD_HTML" \
+            $ARGS || echo "⚠️ Python dashboard generation failed for runner ${{ matrix.runner_index }}"
+          
+          echo "✅ Dashboard generated: $DASHBOARD_HTML"
 
       # -------------------------------
-      # Package and upload runner results
+      # Package all runner results into ZIP
       # -------------------------------
       - name: Package runner results
+        if: always()
         shell: bash
         run: |
           ZIP_NAME="runner-${{ matrix.runner_index }}-results.zip"
-          zip -r "$ZIP_NAME" "${{ env.REPORT_DIR }}" >/dev/null
-          echo "✅ Packaged runner ZIP: $ZIP_NAME"
+          mkdir -p upload
+          zip -r "upload/$ZIP_NAME" "${{ env.REPORT_DIR }}" >/dev/null || echo "⚠️ ZIP packaging warning"
+          echo "✅ Packaged runner ZIP: upload/$ZIP_NAME"
 
+      # -------------------------------
+      # Upload runner artifact
+      # -------------------------------
       - name: Upload runner artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: artillery-results-runner-${{ matrix.runner_index }}
-          path: runner-${{ matrix.runner_index }}-results.zip
+          path: upload/runner-${{ matrix.runner_index }}-results.zip
+        continue-on-error: true
 
 # ============================================================
 # JOB 3: Aggregate results after all runners finish
@@ -326,13 +451,16 @@ jobs:
         run: |
           REPORT_DIR="./_reports"
           mkdir -p "$REPORT_DIR"
-          cp ./downloaded-artifacts/*/* "$REPORT_DIR"/ 2>/dev/null || true
+          # Copy all files from unzipped artifacts into the consolidated report directory
+          # The structure is: ./downloaded-artifacts/artillery-results-runner-N/upload/runner-N-results/result-runner-N.json
+          # We need to use find to locate the actual report files inside the deep directory structure created by upload-artifact/download-artifact
+          find ./downloaded-artifacts -type f \( -name '*.json' -o -name '*.html' -o -name '*.log' -o -name '*.zip' \) -exec cp {} "$REPORT_DIR" \;
           echo "✅ Merged all runner files into $REPORT_DIR"
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13.1"
+          python-version: "3.11" # Consistent Python version
 
       - name: Install Python dependencies
         run: |
@@ -342,8 +470,10 @@ jobs:
       - name: Generate consolidated dashboard
         shell: bash
         run: |
-          JSON_FILES=$(find "$REPORT_DIR" -name '*.json' -type f | paste -sd "," -)
-          FINAL_HTML="$REPORT_DIR/${{ needs.set-test-name.outputs.final_test_name }}-dashboard.html"
+          # Find all individual JSON files and join paths with a comma
+          JSON_FILES=$(find ./_reports -name 'result-runner-*.json' -type f | paste -sd "," -)
+          FINAL_HTML="./_reports/${{ needs.set-test-name.outputs.final_test_name }}-dashboard.html"
+          
           if [ -n "$JSON_FILES" ]; then
             python "${GITHUB_WORKSPACE}/utilities/generate_artillery_dashboard.py" \
               --json "$JSON_FILES" \
@@ -366,39 +496,47 @@ jobs:
           name: consolidated-artillery-results
           path: consolidated-results.zip
 
+
 # ============================================================
-# JOB 4: Cleanup old reports/artifacts
+# JOB 4: Cleanup (Only deletes old reports and artifacts)
 # ============================================================
   cleanup-artifacts:
     if: ${{ github.event.inputs.test_type == 'cleanup' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Install JQ
+        run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Delete old local reports
-        run: |
-          REPORT_DIR="./_reports"
-          DAYS=${{ github.event.inputs.cleanup_days }}
-          echo "🧹 Deleting reports older than $DAYS days from $REPORT_DIR"
-          find "$REPORT_DIR" -type f -mtime +$DAYS -print -delete
-          echo "✅ Local cleanup completed"
+      # Removed 'Delete Old Local Reports' step as files are ephemeral on runners.
 
-      - name: Delete old GitHub artifacts
+      - name: Delete Old GitHub Artifacts
         env:
+          # Use the default GitHub Token for artifact deletion
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           DAYS=${{ github.event.inputs.cleanup_days }}
-          ARTIFACTS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/artifacts?per_page=100" \
-            | jq -r '.artifacts[] | "\(.id) \(.created_at)"')
+          REPO="${{ github.repository }}"
+          API_URL="https://api.github.com/repos/$REPO/actions/artifacts?per_page=100"
+          
+          # Fetch all artifacts
+          ARTIFACTS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "$API_URL" | jq -r '.artifacts[] | "\(.id) \(.created_at)"')
+          
           NOW=$(date +%s)
+          
+          echo "Fetching and checking artifacts..."
+          
+          # Loop through artifacts and delete if older than $DAYS
           while read -r ID CREATED_AT; do
             ART_TS=$(date -d "$CREATED_AT" +%s)
             AGE=$(( (NOW - ART_TS) / 86400 ))
+            
             if [ "$AGE" -gt "$DAYS" ]; then
-              echo "Deleting artifact ID: $ID ($AGE days old)"
-              curl -s -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
-                "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$ID"
+              echo "Deleting artifact ID: $ID (created $CREATED_AT, $AGE days old)"
+              
+              # Execute deletion
+              DELETE_URL="https://api.github.com/repos/$REPO/actions/artifacts/$ID"
+              curl -s -X DELETE -H "Authorization: token $GITHUB_TOKEN" "$DELETE_URL" > /dev/null
             fi
           done <<< "$ARTIFACTS"
-          echo "✅ GitHub artifact cleanup completed"
+          
+          echo "✅ GitHub artifact cleanup completed (artifacts older than $DAYS days deleted)."
