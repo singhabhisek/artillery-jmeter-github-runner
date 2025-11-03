@@ -446,6 +446,13 @@ jobs:
         with:
           path: ./downloaded-artifacts
 
+      - name: Unzip all runner results
+        shell: bash
+        run: |
+          # Use find to locate all zip files and unzip them recursively into the same folder
+          find ./downloaded-artifacts -name '*.zip' -exec unzip -o {} -d ./downloaded-artifacts/ \;
+          echo "✅ Successfully unzipped all runner artifacts."
+
       - name: Merge all runner files into _reports
         shell: bash
         run: |
@@ -454,7 +461,7 @@ jobs:
           # Copy all files from unzipped artifacts into the consolidated report directory
           # The structure is: ./downloaded-artifacts/artillery-results-runner-N/upload/runner-N-results/result-runner-N.json
           # We need to use find to locate the actual report files inside the deep directory structure created by upload-artifact/download-artifact
-          find ./downloaded-artifacts -type f \( -name '*.json' -o -name '*.html' -o -name '*.log' -o -name '*.zip' \) -exec cp {} "$REPORT_DIR" \;
+          find ./downloaded-artifacts -type f \( -name 'result-runner-*.json' -o -name 'report-runner-*.html' -o -name 'dashboard-runner-*.html' -o -name 'runner-*-system.log' \) -exec cp {} "$REPORT_DIR" \;
           echo "✅ Merged all runner files into $REPORT_DIR"
 
       - name: Setup Python
