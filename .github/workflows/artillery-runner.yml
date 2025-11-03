@@ -256,8 +256,7 @@ jobs:
         if: ${{ github.event.inputs.monitor_system == 'true' && matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         shell: bash
         run: |
-          mkdir -p "${{ env.REPORT_DIR }}"
-          LOG_FILE="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-system.log"
+          LOG_FILE="${{ env.REPORT_DIR }}/system.log"
           echo "timestamp,cpu_user,cpu_system,cpu_idle,mem_used,mem_free" > $LOG_FILE
           monitor() {
             while true; do
@@ -270,7 +269,7 @@ jobs:
           }
           monitor &
           echo $! > /tmp/monitor_pid.txt
-          echo "System monitoring started in background, logging every 5 minutes."
+          echo "System monitoring started in background, logging every 3 minutes."
           
       # -----------------------------
       # Map Environment Variables 
@@ -321,18 +320,15 @@ jobs:
         env:
           AUTH_HEADER: ${{ secrets.AUTH_HEADER }}
         run: |
-          # Prepare directories
-          REPORT_DIR="./reports/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}"
-          mkdir -p "$REPORT_DIR"
+          mkdir -p "${{ env.REPORT_DIR }}"
 
           # Construct output filenames
-          JSON_OUT="$REPORT_DIR/result-runner-${{ matrix.runner_index }}.json"
-          HTML_OUT="$REPORT_DIR/result-runner-${{ matrix.runner_index }}.html"
+          JSON_OUT="${{ env.REPORT_DIR }}/result.json"
+          HTML_OUT="${{ env.REPORT_DIR }}/report.html"
 
-          echo "🚀 Running Artillery for ${{ github.event.inputs.app_name }} on environment: ${{ github.event.inputs.environment_name }}"
-          echo "🔗 Target URL: $BASE_URL"
+          echo "JSON_OUT : $JSON_OUT"
+          echo "HTML_OUT : $HTML_OUT"
 
-          # Run test using environment secrets & vars
           BASE_URL="$BASE_URL" \
           API_KEY="$API_KEY" \
           TARGET_HOST="$TARGET_HOST" \
@@ -343,10 +339,8 @@ jobs:
           npx artillery run "applications/${{ github.event.inputs.app_name }}/scripts/${{ github.event.inputs.scenario_file }}" \
             --output "$JSON_OUT"
 
-          # Generate HTML report
           npx artillery report "$JSON_OUT" --output "$HTML_OUT"
-
-          echo "✅ Artillery reports generated at: $REPORT_DIR"
+          echo "✅ Artillery reports generated at: ${{ env.REPORT_DIR }}"
 
       # -------------------------------
       # Stop system monitoring (optional)
@@ -379,26 +373,10 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          # Define per-runner folder under REPORT_DIR
-          RUNNER_DIR="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}"
-          mkdir -p "$RUNNER_DIR"
-      
-          # Copy Artillery JSON & HTML output into the runner folder
-          ARTILLERY_JSON="./reports/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}/result-runner-${{ matrix.runner_index }}.json"
-          ARTILLERY_HTML="./reports/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}/result-runner-${{ matrix.runner_index }}.html"
-          
-          if [ -f "$ARTILLERY_JSON" ]; then
-            cp "$ARTILLERY_JSON" "$RUNNER_DIR/"
-          fi
-          if [ -f "$ARTILLERY_HTML" ]; then
-            cp "$ARTILLERY_HTML" "$RUNNER_DIR/"
-          fi
-      
-          # Define dashboard HTML output
-          RUNNER_HTML="$RUNNER_DIR/runner-${{ matrix.runner_index }}-dashboard.html"
+          # Dashboard output
+          DASHBOARD_HTML="${{ env.REPORT_DIR }}/dashboard.html"
           echo "📊 Generating Python dashboard for runner ${{ matrix.runner_index }}..."
-      
-          # Build dynamic arguments for Python dashboard
+          
           ARGS=""
           [ -n "${{ env.PY_APP_NAME }}" ] && ARGS="$ARGS --app-name \"${{ env.PY_APP_NAME }}\""
           [ -n "${{ env.PY_TEST_NAME }}" ] && ARGS="$ARGS --test-name \"${{ env.PY_TEST_NAME }}\""
@@ -406,32 +384,26 @@ jobs:
           [ -n "${{ env.PY_MODE }}" ] && ARGS="$ARGS --mode \"${{ env.PY_MODE }}\""
           [ -n "${{ env.PY_GRANULARITY }}" ] && ARGS="$ARGS --granularity \"${{ env.PY_GRANULARITY }}\""
           [ -n "${{ env.PY_SHOW_OVERALL_METRICS }}" ] && ARGS="$ARGS --show-overall-metrics"
-      
-          # Run Python dashboard generator
+
           python "${GITHUB_WORKSPACE}/utilities/generate_artillery_dashboard.py" \
-            --json "$RUNNER_DIR/*.json" \
+            --json "${{ env.REPORT_DIR }}/result.json" \
             --yaml "${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}" \
-            --output "$RUNNER_HTML" \
+            --output "$DASHBOARD_HTML" \
             $ARGS || echo "⚠️ Python dashboard generation failed for runner ${{ matrix.runner_index }}"
-      
-          echo "✅ Dashboard generated for runner ${{ matrix.runner_index }}: $RUNNER_HTML"
+          
+          echo "✅ Dashboard generated: $DASHBOARD_HTML"
       
       # -------------------------------
       # Package all runner results into ZIP
       # -------------------------------
-      - name: Package all runner results into ZIP
+      - name: Package runner results
         if: always()
         shell: bash
         run: |
-          RUNNER_DIR="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}"
           ZIP_NAME="runner-${{ matrix.runner_index }}-results.zip"
-          UPLOAD_DIR="upload"
-          mkdir -p "$UPLOAD_DIR"
-      
-          echo "📦 Packaging JSON, HTML, and dashboard for runner ${{ matrix.runner_index }}..."
-          zip -r "$UPLOAD_DIR/$ZIP_NAME" "$RUNNER_DIR" >/dev/null || echo "⚠️ ZIP packaging warning"
-      
-          echo "✅ Packaged runner ZIP: $UPLOAD_DIR/$ZIP_NAME"
+          mkdir -p upload
+          zip -r "upload/$ZIP_NAME" "${{ env.REPORT_DIR }}" >/dev/null || echo "⚠️ ZIP packaging warning"
+          echo "✅ Packaged runner ZIP: upload/$ZIP_NAME"
       
       # -------------------------------
       # Upload runner artifact
@@ -455,16 +427,6 @@ jobs:
 
     steps:
       # -------------------------------
-      # Set REPORT_DIR for this job
-      # -------------------------------
-      - name: Set job environment variables
-        id: set_env
-        run: |
-          REPORT_DIR="./reports/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}"
-          echo "REPORT_DIR=$REPORT_DIR" >> $GITHUB_ENV
-          echo "✅ REPORT_DIR set to: $REPORT_DIR"
-
-      # -------------------------------
       # Checkout repository
       # -------------------------------
       - name: Checkout repository
@@ -473,50 +435,23 @@ jobs:
           fetch-depth: 0
 
       # -------------------------------
-      # Download all runner artifacts
+      # Collect all runner JSON and HTML files
       # -------------------------------
-      - name: Download all runner artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artillery-results
-        continue-on-error: true
-
-      # -------------------------------
-      # Extract all runner ZIPs
-      # -------------------------------
-      - name: Extract all runner ZIPs
+      - name: Collect runner outputs
         shell: bash
         run: |
           mkdir -p combined-results
-          for zipfile in artillery-results/**/*.zip; do
-            [ -f "$zipfile" ] || continue
-            foldername=$(basename "$zipfile" .zip)
-            echo "📦 Extracting $zipfile -> combined-results/$foldername"
-            mkdir -p combined-results/"$foldername"
-            unzip -o "$zipfile" -d combined-results/"$foldername" >/dev/null
+          for runner_folder in ./reports/runner-*; do
+            [ -d "$runner_folder" ] || continue
+            cp "$runner_folder"/*.json combined-results/ 2>/dev/null || true
+            cp "$runner_folder"/*.html combined-results/ 2>/dev/null || true
           done
-          echo "✅ Extraction complete."
+          echo "✅ Collected all runner JSON and HTML files into combined-results/"
 
       # -------------------------------
-      # Copy only JSON & HTML files to REPORT_DIR
+      # Determine consolidated test name
       # -------------------------------
-      - name: Copy JSON & HTML to REPORT_DIR
-        shell: bash
-        run: |
-          echo "📁 Copying JSON and HTML files to REPORT_DIR..."
-          mkdir -p "${{ env.REPORT_DIR }}"
-          for runner_folder in combined-results/*; do
-            if [ -d "$runner_folder" ]; then
-              cp "$runner_folder"/*.json "${{ env.REPORT_DIR }}/" 2>/dev/null || true
-              cp "$runner_folder"/*.html "${{ env.REPORT_DIR }}/" 2>/dev/null || true
-            fi
-          done
-          echo "✅ JSON and HTML files copied to ${{ env.REPORT_DIR }}"
-          
-      # -------------------------------
-      # Determine test name for consolidated files
-      # -------------------------------
-      - name: Determine test name
+      - name: Determine consolidated test name
         id: test_name
         shell: bash
         run: |
@@ -566,24 +501,12 @@ jobs:
           FINAL_HTML="${{ steps.test_name.outputs.consolidated_test_name }}-consolidated-dashboard.html"
           ARGS=""
 
-          if [ -n "${{ env.PY_APP_NAME }}" ]; then
-            ARGS="$ARGS --app-name \"${{ env.PY_APP_NAME }}\""
-          fi
-          if [ -n "${{ env.PY_TEST_NAME }}" ]; then
-            ARGS="$ARGS --test-name \"${{ env.PY_TEST_NAME }}\""
-          fi
-          if [ -n "${{ env.PY_SLA }}" ]; then
-            ARGS="$ARGS --sla \"${{ env.PY_SLA }}\""
-          fi
-          if [ -n "${{ env.PY_MODE }}" ]; then
-            ARGS="$ARGS --mode \"${{ env.PY_MODE }}\""
-          fi
-          if [ -n "${{ env.PY_GRANULARITY }}" ]; then
-            ARGS="$ARGS --granularity \"${{ env.PY_GRANULARITY }}\""
-          fi
-          if [ -n "${{ env.PY_SHOW_OVERALL_METRICS }}" ]; then
-            ARGS="$ARGS --show-overall-metrics"
-          fi
+          [ -n "${{ env.PY_APP_NAME }}" ] && ARGS="$ARGS --app-name \"${{ env.PY_APP_NAME }}\""
+          [ -n "${{ env.PY_TEST_NAME }}" ] && ARGS="$ARGS --test-name \"${{ env.PY_TEST_NAME }}\""
+          [ -n "${{ env.PY_SLA }}" ] && ARGS="$ARGS --sla \"${{ env.PY_SLA }}\""
+          [ -n "${{ env.PY_MODE }}" ] && ARGS="$ARGS --mode \"${{ env.PY_MODE }}\""
+          [ -n "${{ env.PY_GRANULARITY }}" ] && ARGS="$ARGS --granularity \"${{ env.PY_GRANULARITY }}\""
+          [ -n "${{ env.PY_SHOW_OVERALL_METRICS }}" ] && ARGS="$ARGS --show-overall-metrics"
 
           echo "🧠 Generating consolidated Python dashboard..."
           python "${GITHUB_WORKSPACE}/utilities/generate_artillery_dashboard.py" \
@@ -601,14 +524,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p final-upload
+          cp combined-results/*.json final-upload/ 2>/dev/null || true
+          cp combined-results/*.html final-upload/ 2>/dev/null || true
+          cp ./reports/runner-*/system.log final-upload/ 2>/dev/null || true
+          cp "$FINAL_HTML" final-upload/ 2>/dev/null || true
 
-          # Copy all extracted runner zips, dashboards, logs, and final HTML
-          cp artillery-results/**/*.zip final-upload/ 2>/dev/null || true
-          cp combined-results/**/*.html final-upload/ 2>/dev/null || true
-          cp combined-results/**/*.log final-upload/ 2>/dev/null || true
-          cp *.html final-upload/ 2>/dev/null || true
-
-          # Archive everything into a single consolidated ZIP
           zip -r "consolidated-results.zip" final-upload/ >/dev/null
           echo "✅ Packaged all results into consolidated-results.zip"
 
@@ -628,11 +548,11 @@ jobs:
         if: ${{ env.UPLOAD_RESULTS == 'true' }}
         shell: bash
         run: |
-          FINAL_RESULTS_DIR="./reports/${{ github.event.inputs.app_name }}/${{ steps.test_name.outputs.consolidated_test_name }}"
+          FINAL_RESULTS_DIR="./reports/consolidated"
           mkdir -p "$FINAL_RESULTS_DIR"
           cp consolidated-results.zip "$FINAL_RESULTS_DIR/"
           echo "✅ Consolidated results uploaded to $FINAL_RESULTS_DIR"
-
+          
 # ============================================================
 # JOB 4: Cleanup (Only deletes old reports and artifacts)
 # ============================================================
