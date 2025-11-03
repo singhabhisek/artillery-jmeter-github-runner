@@ -170,11 +170,11 @@ jobs:
         run: |
           # Set REPORT_DIR and ensure the folder exists
           export REPORT_DIR="${{ github.workspace }}/_reports"
+          #export REPORT_DIR="${{ github.workspace }}/_reports/${{ github.event.inputs.app_name }}"
           mkdir -p "$REPORT_DIR"
           echo "REPORT_DIR=$REPORT_DIR" >> $GITHUB_ENV
           echo "REPORT_DIR location: $REPORT_DIR"
-
-          
+ 
       # -----------------------------
       # Skip unused runners
       # -----------------------------
@@ -260,6 +260,7 @@ jobs:
         if: ${{ github.event.inputs.monitor_system == 'true' && matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         shell: bash
         run: |
+          mkdir -p "${{ env.REPORT_DIR }}"
           LOG_FILE="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-system.log"
           echo "timestamp,cpu_user,cpu_system,cpu_idle,mem_used,mem_free" > $LOG_FILE
           monitor() {
@@ -326,9 +327,8 @@ jobs:
         run: |
           mkdir -p "${{ env.REPORT_DIR }}"
 
-          # Construct output filenames
-          JSON_OUT="${{ env.REPORT_DIR }}/result.json"
-          HTML_OUT="${{ env.REPORT_DIR }}/report.html"
+          JSON_OUT="${{ env.REPORT_DIR }}/result-runner-${{ matrix.runner_index }}.json"
+          HTML_OUT="${{ env.REPORT_DIR }}/report-runner-${{ matrix.runner_index }}.html"
 
           echo "JSON_OUT : $JSON_OUT"
           echo "HTML_OUT : $HTML_OUT"
@@ -377,10 +377,11 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          # Dashboard output
-          DASHBOARD_HTML="${{ env.REPORT_DIR }}/dashboard.html"
+          DASHBOARD_HTML="${{ env.REPORT_DIR }}/dashboard-runner-${{ matrix.runner_index }}.html"
+          # ${{ env.REPORT_DIR }}/result-runner-${{ matrix.runner_index }}.json
+          JSON_FILE="${{ env.REPORT_DIR }}/result-runner-${{ matrix.runner_index }}.json"
           echo "📊 Generating Python dashboard for runner ${{ matrix.runner_index }}..."
-          
+      
           ARGS=""
           [ -n "${{ env.PY_APP_NAME }}" ] && ARGS="$ARGS --app-name \"${{ env.PY_APP_NAME }}\""
           [ -n "${{ env.PY_TEST_NAME }}" ] && ARGS="$ARGS --test-name \"${{ env.PY_TEST_NAME }}\""
@@ -388,13 +389,13 @@ jobs:
           [ -n "${{ env.PY_MODE }}" ] && ARGS="$ARGS --mode \"${{ env.PY_MODE }}\""
           [ -n "${{ env.PY_GRANULARITY }}" ] && ARGS="$ARGS --granularity \"${{ env.PY_GRANULARITY }}\""
           [ -n "${{ env.PY_SHOW_OVERALL_METRICS }}" ] && ARGS="$ARGS --show-overall-metrics"
-
+      
           python "${GITHUB_WORKSPACE}/utilities/generate_artillery_dashboard.py" \
-            --json "${{ env.REPORT_DIR }}/result.json" \
+            --json "$JSON_FILE" \
             --yaml "${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}" \
             --output "$DASHBOARD_HTML" \
             $ARGS || echo "⚠️ Python dashboard generation failed for runner ${{ matrix.runner_index }}"
-          
+      
           echo "✅ Dashboard generated: $DASHBOARD_HTML"
       
       # -------------------------------
@@ -425,42 +426,28 @@ jobs:
 # ============================================================
   aggregate-reports:
     if: always()
-    name: "Aggregate & Upload Final Reports"
     runs-on: ubuntu-latest
     needs: [set-test-name, run-artillery]
-  
     steps:
-      # -------------------------------
-      # Checkout repository
-      # -------------------------------
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-  
-      # -------------------------------
-      # Collect all runner artifacts (JSON, HTML, system logs)
-      # -------------------------------
+
       - name: Collect runner artifacts
         uses: actions/download-artifact@v4
         with:
           path: ./downloaded-artifacts
-  
-      # -------------------------------
-      # Organize everything into ./_reports
-      # -------------------------------
+
       - name: Organize all reports
         shell: bash
         run: |
-          mkdir -p ./_reports
-          find ./downloaded-artifacts -type f -name "*.json" -exec cp {} ./_reports/ \; || true
-          find ./downloaded-artifacts -type f -name "*.html" -exec cp {} ./_reports/ \; || true
-          find ./downloaded-artifacts -type f -name "*.log" -exec cp {} ./_reports/ \; || true
-          echo "✅ Merged all runner JSON/HTML/log files into ./_reports"
-  
-      # -------------------------------
-      # Determine consolidated test name
-      # -------------------------------
+          REPORT_DIR="./_reports/${{ github.event.inputs.app_name }}"
+          mkdir -p "$REPORT_DIR"
+          find ./downloaded-artifacts -type f -name "*.json" -exec cp {} "$REPORT_DIR/" \; || true
+          find ./downloaded-artifacts -type f -name "*.html" -exec cp {} "$REPORT_DIR/" \; || true
+          find ./downloaded-artifacts -type f -name "*.log" -exec cp {} "$REPORT_DIR/" \; || true
+          echo "✅ Merged all runner JSON/HTML/log files into $REPORT_DIR"
+
       - name: Determine consolidated test name
         id: test_name
         shell: bash
@@ -468,15 +455,12 @@ jobs:
           CONSOLIDATED_NAME="${{ needs.set-test-name.outputs.final_test_name }}"
           echo "consolidated_test_name=$CONSOLIDATED_NAME" >> $GITHUB_OUTPUT
           echo "✅ Using consolidated test name: $CONSOLIDATED_NAME"
-  
-      # -------------------------------
-      # Collect all JSON filenames
-      # -------------------------------
-      - name: Collect JSON files
+
+      - name: Collect all JSON filenames
         id: collect_jsons
         shell: bash
         run: |
-          JSON_FILES=$(find ./_reports -name '*.json' -type f | paste -sd "," -)
+          JSON_FILES=$(find "$REPORT_DIR" -name '*.json' -type f | paste -sd "," -)
           if [ -z "$JSON_FILES" ]; then
             echo "⚠️ No JSON files found, skipping dashboard generation."
             echo "json_files=" >> $GITHUB_OUTPUT
@@ -484,64 +468,45 @@ jobs:
           fi
           echo "json_files=$JSON_FILES" >> $GITHUB_OUTPUT
           echo "✅ Found JSON files: $JSON_FILES"
-  
-      # -------------------------------
-      # Setup Python environment
-      # -------------------------------
+
       - name: Setup Python
         if: ${{ steps.collect_jsons.outputs.json_files != '' }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.13.1"
-  
+
       - name: Install Python dependencies
         if: ${{ steps.collect_jsons.outputs.json_files != '' }}
         run: |
           python -m pip install --upgrade pip
           pip install pandas pyyaml plotly numpy
-  
-      # -------------------------------
-      # Generate consolidated Python dashboard
-      # -------------------------------
+
       - name: Generate consolidated dashboard
         if: ${{ steps.collect_jsons.outputs.json_files != '' }}
         shell: bash
         run: |
-          FINAL_HTML="./_reports/${{ steps.test_name.outputs.consolidated_test_name }}-dashboard.html"
+          FINAL_HTML="$REPORT_DIR/${{ steps.test_name.outputs.consolidated_test_name }}-dashboard.html"
           ARGS=""
           [ -n "${{ env.PY_APP_NAME }}" ] && ARGS="$ARGS --app-name \"${{ env.PY_APP_NAME }}\""
           [ -n "${{ env.PY_TEST_NAME }}" ] && ARGS="$ARGS --test-name \"${{ env.PY_TEST_NAME }}\""
-          [ -n "${{ env.PY_SLA }}" ] && ARGS="$ARGS --sla \"${{ env.PY_SLA }}\""
-          [ -n "${{ env.PY_MODE }}" ] && ARGS="$ARGS --mode \"${{ env.PY_MODE }}\""
-          [ -n "${{ env.PY_GRANULARITY }}" ] && ARGS="$ARGS --granularity \"${{ env.PY_GRANULARITY }}\""
-          [ -n "${{ env.PY_SHOW_OVERALL_METRICS }}" ] && ARGS="$ARGS --show-overall-metrics"
-  
-          echo "📊 Generating consolidated dashboard..."
           python "${GITHUB_WORKSPACE}/utilities/generate_artillery_dashboard.py" \
-            --json "${{ steps.collect_jsons.outputs.json_files }}" \
+            --json "$JSON_FILES" \
             --yaml "${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}" \
             --output "$FINAL_HTML" \
             $ARGS || echo "⚠️ Dashboard generation failed, continuing."
-  
           echo "✅ Consolidated dashboard generated: $FINAL_HTML"
           echo "final_html=$FINAL_HTML" >> $GITHUB_OUTPUT
-  
-      # -------------------------------
-      # Package all results
-      # -------------------------------
+
       - name: Package consolidated results
         shell: bash
         run: |
           mkdir -p final-upload
-          cp ./_reports/*.json final-upload/ 2>/dev/null || true
-          cp ./_reports/*.html final-upload/ 2>/dev/null || true
-          cp ./_reports/*.log final-upload/ 2>/dev/null || true
+          cp "$REPORT_DIR"/*.json final-upload/ 2>/dev/null || true
+          cp "$REPORT_DIR"/*.html final-upload/ 2>/dev/null || true
+          cp "$REPORT_DIR"/*.log final-upload/ 2>/dev/null || true
           zip -r consolidated-results.zip final-upload >/dev/null
           echo "✅ Packaged consolidated-results.zip"
-  
-      # -------------------------------
-      # Upload final artifacts
-      # -------------------------------
+
       - name: Upload consolidated artifact
         uses: actions/upload-artifact@v4
         with:
@@ -554,17 +519,10 @@ jobs:
 # ============================================================
   cleanup-artifacts:
     if: ${{ github.event.inputs.test_type == 'cleanup' }}
-    name: "Cleanup Old Reports & Artifacts"
     runs-on: ubuntu-latest
-    permissions:
-      actions: write
-
     steps:
       - uses: actions/checkout@v4
 
-      # -----------------------------
-      # Delete old local reports
-      # -----------------------------
       - name: Delete Old Local Reports
         run: |
           REPORT_DIR="./_reports/${{ github.event.inputs.app_name }}"
@@ -573,20 +531,14 @@ jobs:
           find "$REPORT_DIR" -type f \( -name '*.json' -o -name '*.html' -o -name '*.zip' \) -mtime +$DAYS -print -delete
           echo "✅ Local report cleanup completed."
 
-      # -----------------------------
-      # Delete old GitHub Actions artifacts
-      # -----------------------------
       - name: Delete Old GitHub Artifacts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           DAYS=${{ github.event.inputs.cleanup_days }}
-          echo "🧹 Deleting GitHub Actions artifacts older than $DAYS days..."
-
           ARTIFACTS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/actions/artifacts?per_page=100" \
             | jq -r '.artifacts[] | "\(.id) \(.created_at)"')
-
           NOW=$(date +%s)
           while read -r ID CREATED_AT; do
             ART_TS=$(date -d "$CREATED_AT" +%s)
@@ -597,5 +549,4 @@ jobs:
                 "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$ID"
             fi
           done <<< "$ARTIFACTS"
-
           echo "✅ GitHub artifact cleanup completed."
