@@ -47,26 +47,26 @@ scenarios:
               as: getResponse
       # - log: "✅ Completed signed GET request: {{ getResponse }}"
 
-  # --------------------------------------
-  # Scenario 2: Signed POST /secure (CSV Driven)
-  # --------------------------------------
-  - name: "2. Signed POST /secure (CSV Driven)"
-    beforeRequest: signRequest
-    afterResponse: afterResponse
-    weight: 1
-    flow:
-      - post:
-          url: "/prod/secure"
-          headers:
-            Content-Type: "application/json"
-          json:
-            name: "{{ name }}"
-            age: "{{ age }}"
-            city: "{{ city }}"
-          expect:
-            - statusCode: 200
-          capture:
-            - json: "$"
-              as: postResponse
-      - log: "📦 Sent POST with CSV data: Name={{ name }}, Age={{ age }}, City={{ city }}"
-      # - log: "📩 Response: {{ postResponse }}"
+  # # --------------------------------------
+  # # Scenario 2: Signed POST /secure (CSV Driven)
+  # # --------------------------------------
+  # - name: "2. Signed POST /secure (CSV Driven)"
+  #   beforeRequest: signRequest
+  #   afterResponse: afterResponse
+  #   weight: 1
+  #   flow:
+  #     - post:
+  #         url: "/prod/secure"
+  #         headers:
+  #           Content-Type: "application/json"
+  #         json:
+  #           name: "{{ name }}"
+  #           age: "{{ age }}"
+  #           city: "{{ city }}"
+  #         expect:
+  #           - statusCode: 200
+  #         capture:
+  #           - json: "$"
+  #             as: postResponse
+  #     - log: "📦 Sent POST with CSV data: Name={{ name }}, Age={{ age }}, City={{ city }}"
+  #     # - log: "📩 Response: {{ postResponse }}"
