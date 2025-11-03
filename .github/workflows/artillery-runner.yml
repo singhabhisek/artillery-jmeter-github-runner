@@ -168,7 +168,7 @@ jobs:
       - name: Set job environment variables
         id: set_env
         run: |
-          echo "REPORT_DIR=./reports/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}" >> $GITHUB_ENV
+          echo "REPORT_DIR=./reports" >> $GITHUB_ENV
 
           
       # -----------------------------
