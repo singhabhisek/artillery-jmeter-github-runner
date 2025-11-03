@@ -114,20 +114,29 @@ function signRequest(requestParams, context, ee, next) {
 // Response Hook: Log Success & Failures
 // -------------------------------
 function afterResponse(requestParams, response, context, ee, next) {
-  const { method, url: reqUrl } = requestParams;
-  const statusCode = response.statusCode;
-  const bodyText = response.body ? response.body.toString() : "<no body>";
+  console.log(`\n--- afterResponse called for ${requestParams.method} ${requestParams.url} ---`);
 
-  if (statusCode >= 400) {
-    logToFile(
-      ERROR_LOG,
-      `❌ ${method} ${reqUrl} failed (${statusCode})\nResponse: ${bodyText}\n`
-    );
-  } else {
-    logToFile(RESPONSE_LOG, `✅ ${method} ${reqUrl} [${statusCode}]\n${bodyText}\n`);
+  if (!response) {
+    console.log("⚠️ No response received");
+    return next();
   }
 
-  console.log(`Response (${statusCode}) from ${reqUrl}`);
+  console.log("Status:", response.statusCode);
+  console.log("Headers:", response.headers);
+
+  let bodyText;
+  if (response.body) {
+    bodyText = Buffer.isBuffer(response.body)
+      ? response.body.toString("utf-8")
+      : typeof response.body === "string"
+      ? response.body
+      : JSON.stringify(response.body, null, 2);
+  } else {
+    bodyText = "<no body>";
+  }
+
+  console.log("Body:", bodyText);
+
   return next();
 }
 
