@@ -372,54 +372,52 @@ jobs:
 
 
       # -------------------------------
-      # Generate Python dashboard for this runner (Requirement 2)
+      # Generate Python dashboard for this runner
       # -------------------------------
       - name: Generate Python dashboard for this runner
         if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         continue-on-error: true
         shell: bash
         run: |
-          # Define per-runner subfolder under REPORT_DIR
+          # Define per-runner folder under REPORT_DIR
           RUNNER_DIR="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}"
           mkdir -p "$RUNNER_DIR"
-
+      
+          # Copy Artillery JSON & HTML output into the runner folder
+          ARTILLERY_JSON="./reports/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}/result-runner-${{ matrix.runner_index }}.json"
+          ARTILLERY_HTML="./reports/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}/result-runner-${{ matrix.runner_index }}.html"
+          
+          if [ -f "$ARTILLERY_JSON" ]; then
+            cp "$ARTILLERY_JSON" "$RUNNER_DIR/"
+          fi
+          if [ -f "$ARTILLERY_HTML" ]; then
+            cp "$ARTILLERY_HTML" "$RUNNER_DIR/"
+          fi
+      
           # Define dashboard HTML output
           RUNNER_HTML="$RUNNER_DIR/runner-${{ matrix.runner_index }}-dashboard.html"
           echo "📊 Generating Python dashboard for runner ${{ matrix.runner_index }}..."
-          
-          # Build dynamic arguments for the Python script
+      
+          # Build dynamic arguments for Python dashboard
           ARGS=""
-          if [ -n "${{ env.PY_APP_NAME }}" ]; then
-            ARGS="$ARGS --app-name \"${{ env.PY_APP_NAME }}\""
-          fi
-          if [ -n "${{ env.PY_TEST_NAME }}" ]; then
-            ARGS="$ARGS --test-name \"${{ env.PY_TEST_NAME }}\""
-          fi
-          if [ -n "${{ env.PY_SLA }}" ]; then
-            ARGS="$ARGS --sla \"${{ env.PY_SLA }}\""
-          fi
-          if [ -n "${{ env.PY_MODE }}" ]; then
-            ARGS="$ARGS --mode \"${{ env.PY_MODE }}\""
-          fi
-          if [ -n "${{ env.PY_GRANULARITY }}" ]; then
-            ARGS="$ARGS --granularity \"${{ env.PY_GRANULARITY }}\""
-          fi
-          if [ -n "${{ env.PY_SHOW_OVERALL_METRICS }}" ]; then
-            ARGS="$ARGS --show-overall-metrics"
-          fi
-
-          # Run the Python dashboard generator for this runner
+          [ -n "${{ env.PY_APP_NAME }}" ] && ARGS="$ARGS --app-name \"${{ env.PY_APP_NAME }}\""
+          [ -n "${{ env.PY_TEST_NAME }}" ] && ARGS="$ARGS --test-name \"${{ env.PY_TEST_NAME }}\""
+          [ -n "${{ env.PY_SLA }}" ] && ARGS="$ARGS --sla \"${{ env.PY_SLA }}\""
+          [ -n "${{ env.PY_MODE }}" ] && ARGS="$ARGS --mode \"${{ env.PY_MODE }}\""
+          [ -n "${{ env.PY_GRANULARITY }}" ] && ARGS="$ARGS --granularity \"${{ env.PY_GRANULARITY }}\""
+          [ -n "${{ env.PY_SHOW_OVERALL_METRICS }}" ] && ARGS="$ARGS --show-overall-metrics"
+      
+          # Run Python dashboard generator
           python "${GITHUB_WORKSPACE}/utilities/generate_artillery_dashboard.py" \
-            --json "${{ env.REPORT_DIR }}/${{ steps.run_test.outputs.result_json }}" \
+            --json "$RUNNER_DIR/*.json" \
             --yaml "${{ env.SCRIPTS_DIR }}/${{ github.event.inputs.scenario_file }}" \
             --output "$RUNNER_HTML" \
-            $ARGS || echo "⚠️ Python dashboard generation failed for runner ${{ matrix.runner_index }} (non-blocking)."
-
-          echo "✅ Dashboard generated for runner ${{ matrix.runner_index }} (if successful): $RUNNER_HTML"
-
-
+            $ARGS || echo "⚠️ Python dashboard generation failed for runner ${{ matrix.runner_index }}"
+      
+          echo "✅ Dashboard generated for runner ${{ matrix.runner_index }}: $RUNNER_HTML"
+      
       # -------------------------------
-      # Package Artillery results, dashboards, and logs into ZIP
+      # Package all runner results into ZIP
       # -------------------------------
       - name: Package all runner results into ZIP
         if: always()
@@ -429,15 +427,12 @@ jobs:
           ZIP_NAME="runner-${{ matrix.runner_index }}-results.zip"
           UPLOAD_DIR="upload"
           mkdir -p "$UPLOAD_DIR"
-
-          echo "📦 Packaging files for runner ${{ matrix.runner_index }}..."
-          
-          # Include JSON, HTML, CPU/memory logs, and anything else in runner folder
-          zip -r "$UPLOAD_DIR/$ZIP_NAME" "$RUNNER_DIR" >/dev/null || echo "⚠️ ZIP packaging encountered a warning"
-
+      
+          echo "📦 Packaging JSON, HTML, and dashboard for runner ${{ matrix.runner_index }}..."
+          zip -r "$UPLOAD_DIR/$ZIP_NAME" "$RUNNER_DIR" >/dev/null || echo "⚠️ ZIP packaging warning"
+      
           echo "✅ Packaged runner ZIP: $UPLOAD_DIR/$ZIP_NAME"
-
-
+      
       # -------------------------------
       # Upload runner artifact
       # -------------------------------
