@@ -242,6 +242,7 @@ jobs:
       # Install Artillery globally
       # -----------------------------
       - name: Install Artillery
+        if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         run: |
           npm install -g artillery@${{ env.ARTILLERY_VERSION }}
           npm install aws4 @faker-js/faker csv-parse
@@ -275,6 +276,7 @@ jobs:
       # Map Environment Variables 
       # -----------------------------
       - name: Map Environment Variables Dynamically
+        if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         shell: bash
         env:
           # Define the dynamic variables for the next step's script
