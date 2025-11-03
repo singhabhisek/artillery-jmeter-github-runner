@@ -168,7 +168,11 @@ jobs:
       - name: Set job environment variables
         id: set_env
         run: |
-          echo "REPORT_DIR=${{ github.workspace }}/_reports" >> $GITHUB_ENV
+          # Set REPORT_DIR and ensure the folder exists
+          export REPORT_DIR="${{ github.workspace }}/_reports"
+          mkdir -p "$REPORT_DIR"
+          echo "REPORT_DIR=$REPORT_DIR" >> $GITHUB_ENV
+          echo "REPORT_DIR location: $REPORT_DIR"
 
           
       # -----------------------------
