@@ -452,24 +452,30 @@ jobs:
       # -------------------------------
       # Package Artillery results into ZIP
       # -------------------------------
-      - name: Package Artillery results into ZIP
+      - name: Package All Runner Results into ZIP
         if: always()
         shell: bash
         run: |
           ZIP_NAME="runner-${{ matrix.runner_index }}-results.zip"
-          mkdir -p upload
-          echo "Packaging available files for runner ${{ matrix.runner_index }}..."
-          zip -r "upload/$ZIP_NAME" "${{ env.REPORT_DIR }}" || echo "⚠️ ZIP packaging encountered a warning"
-          echo "Packaged runner ZIP: upload/$ZIP_NAME"
+          UPLOAD_DIR="upload"
+          mkdir -p "$UPLOAD_DIR"
+
+          echo "📦 Packaging all results for runner ${{ matrix.runner_index }}..."
+
+          # Include Artillery JSON, HTML, Python dashboard, and optional system log
+          zip -r "$UPLOAD_DIR/$ZIP_NAME" "${{ env.REPORT_DIR }}" || echo "⚠️ ZIP packaging encountered a warning"
+
+          echo "✅ Runner package created: $UPLOAD_DIR/$ZIP_NAME"
+
       # -------------------------------
-      # Upload runner artifact
+      # Upload full runner artifact (Artillery + Python + system logs)
       # -------------------------------
-      - name: Upload runner artifact
+      - name: Upload Runner Artifact (Artillery + Python + Logs)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: artillery-results-runner-${{ matrix.runner_index }}
-          path: reports/${{ github.event.inputs.app_name }}/${{ needs.set-test-name.outputs.final_test_name }}/*.zip
+          path: upload/runner-${{ matrix.runner_index }}-results.zip
         continue-on-error: true
           
 # ============================================================
