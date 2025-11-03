@@ -293,16 +293,16 @@ jobs:
           # Use the environment variables set in the 'env:' block above
           BASE_URL="${APP_BASE_URL}"
           TARGET_HOST="${APP_TARGET_HOST}"
-          REGION="${APP_REGION}"
-          ACCESS_KEY="${APP_ACCESS_KEY}"
-          SECRET_KEY="${APP_SECRET_KEY}"
+          AWS_REGION="${APP_REGION}"
+          AWS_ACCESS_KEY_ID="${APP_ACCESS_KEY}"
+          AWS_SECRET_ACCESS_KEY="${APP_SECRET_KEY}"
           
           # Export to GitHub Actions environment for subsequent steps
           echo "BASE_URL=$BASE_URL" >> $GITHUB_ENV
           echo "TARGET_HOST=$TARGET_HOST" >> $GITHUB_ENV
-          echo "REGION=$REGION" >> $GITHUB_ENV
-          echo "ACCESS_KEY=$ACCESS_KEY" >> $GITHUB_ENV
-          echo "SECRET_KEY=$SECRET_KEY" >> $GITHUB_ENV # NOTE: GitHub automatically masks secrets in logs
+          echo "AWS_REGION=$AWS_REGION" >> $GITHUB_ENV
+          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV # NOTE: GitHub automatically masks secrets in logs
           
           echo "✅ Environment variables mapped for $APP_UPPER"
           echo "BASE_URL=$BASE_URL"
@@ -333,8 +333,11 @@ jobs:
           # Run test using environment secrets & vars
           BASE_URL="$BASE_URL" \
           API_KEY="$API_KEY" \
+          TARGET_HOST="$TARGET_HOST" \
           AUTH_HEADER="$AUTH_HEADER" \
           AWS_REGION="$AWS_REGION" \
+          AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+          AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
           npx artillery run "applications/${{ github.event.inputs.app_name }}/scripts/${{ github.event.inputs.scenario_file }}" \
             --output "$JSON_OUT"
 
