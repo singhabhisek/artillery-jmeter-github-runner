@@ -207,7 +207,7 @@ jobs:
         if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11" # Changed from 3.13.1 (pre-release) to stable 3.11
+          python-version: "3.13.1" # Changed from 3.13.1 (pre-release) to stable 3.11
 
       # -------------------------------
       # Install Python dependencies
@@ -469,7 +469,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11" # Consistent Python version
+          python-version: "3.13.1" # Consistent Python version
 
       - name: Install Python dependencies
         run: |
