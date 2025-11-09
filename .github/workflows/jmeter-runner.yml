@@ -301,32 +301,34 @@ jobs:
         shell: bash
         run: |
           mkdir -p final-results
-      
-          # List downloaded runner directories
-          echo "===== Runner directories in merged-artifacts ====="
-          ls -lh merged-artifacts || true
-      
-          # Find all JTL files inside runner directories
+          # List all runner directories recursively
+          echo "===== Full contents of merged-artifacts ====="
+          find merged-artifacts -type d -print
+          
+          echo "===== Listing all files recursively ====="
+          find merged-artifacts -type f | sort
+          
+          # Now find all JTL files recursively
           mapfile -t JTLS < <(find merged-artifacts -type f -name "*.jtl")
           if [ ${#JTLS[@]} -eq 0 ]; then
             echo "❌ No JTL files found inside runner directories."
             exit 1
           fi
-      
+          
           echo "✅ Found ${#JTLS[@]} JTL files:"
           for f in "${JTLS[@]}"; do
             echo " - $f"
           done
-      
+          
           # Merge JTLs using CMDRunner
           MERGED_JTL="final-results/merged.jtl"
           CMD_JAR="$HOME/jmeter/lib/cmdrunner-2.3.jar"
           JAVA_CMD="java -jar \"$CMD_JAR\" --tool Reporter --plugin-type MergeResults"
-      
+          
           for f in "${JTLS[@]}"; do
             JAVA_CMD="$JAVA_CMD --input-jtl \"$f\""
           done
-      
+          
           JAVA_CMD="$JAVA_CMD --generate-csv \"$MERGED_JTL\""
           eval "$JAVA_CMD"
           echo "✅ Merged JTL created: $MERGED_JTL"
