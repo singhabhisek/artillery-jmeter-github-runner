@@ -176,6 +176,7 @@ jobs:
           echo "AWS_ACCESS_KEY=$AWS_ACCESS_KEY" >> $GITHUB_ENV
           echo "AWS_SECRET_KEY=$AWS_SECRET_KEY" >> $GITHUB_ENV
           echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
+          echo "${{ github.event.inputs.jmx_name }}"
 
       # -------------------------------
       # Check JMeter test plan exists
