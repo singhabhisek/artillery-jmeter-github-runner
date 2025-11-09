@@ -88,6 +88,7 @@ jobs:
   # Job 2: Run JMeter runners
   # =========================================================
   run-jmeter:
+    if: ${{ github.event.inputs.test_type == 'load' }}
     needs: set-test-name
     runs-on: ubuntu-latest
     strategy:
@@ -251,6 +252,7 @@ jobs:
         with:
           name: jmeter-results-runner-${{ matrix.runner_index }}
           path: upload/*.zip
+          retention-days: ${{ github.event.inputs.cleanup_days }}
 
 # =========================================================
 # Job 3: Aggregate runner JTLs (FIXED)
@@ -263,6 +265,7 @@ jobs:
 # - Uploads final-results/ as artifact
 # =========================================================
   aggregate-results:
+    if: ${{ github.event.inputs.test_type == 'load' }}
     name: Aggregate JMeter Results
     needs: run-jmeter                     # <- adjust if your test job has a different name
     runs-on: ubuntu-latest
@@ -527,7 +530,7 @@ jobs:
         with:
           name: consolidated-jmeter-results
           path: consolidated-results.zip
-
+          retention-days: ${{ github.event.inputs.cleanup_days }}
           
 # =========================================================
 # Job 4: Cleanup old artifacts
@@ -536,15 +539,52 @@ jobs:
     if: ${{ github.event.inputs.test_type == 'cleanup' }}
     runs-on: ubuntu-latest
     steps:
+      # 1) Cleanup local runner result directories older than X days
       - name: Cleanup old runner results
         run: |
-          echo "🧹 Cleaning runner results older than ${{ github.event.inputs.cleanup_days }} days..."
-          find ${{ env.REPORT_DIR }} -maxdepth 1 -type d -name "*-runner-*" -mtime +${{ github.event.inputs.cleanup_days }} -exec rm -rf {} +
-          echo "✅ Old runner directories deleted."
+          echo "🧹 Cleaning local runner result directories older than ${{ github.event.inputs.cleanup_days }} days..."
+          if [ -d "${{ env.REPORT_DIR }}" ]; then
+            find "${{ env.REPORT_DIR }}" -maxdepth 1 -type d -name "*-runner-*" -mtime +${{ github.event.inputs.cleanup_days }} -exec rm -rf {} +
+            echo "✅ Old runner directories deleted."
+          else
+            echo "ℹ️ ${REPORT_DIR} not found; skipping local cleanup."
+          fi
   
+      # 2) Cleanup old consolidated result directories older than X days
       - name: Cleanup old consolidated results
         run: |
-          echo "🧹 Cleaning consolidated directories older than ${{ github.event.inputs.cleanup_days }} days..."
-          find consolidated -maxdepth 1 -type d -mtime +${{ github.event.inputs.cleanup_days }} -exec rm -rf {} + || true
-          echo "✅ Old consolidated directories deleted."
+          echo "🧹 Cleaning local consolidated directories older than ${{ github.event.inputs.cleanup_days }} days..."
+          if [ -d "consolidated" ]; then
+            find consolidated -maxdepth 1 -type d -mtime +${{ github.event.inputs.cleanup_days }} -exec rm -rf {} +
+            echo "✅ Old consolidated directories deleted."
+          else
+            echo "ℹ️ No consolidated directory found; skipping."
+          fi
   
+      # 3) Cleanup GitHub Actions artifacts older than X days
+      - name: Cleanup old GitHub Actions artifacts
+        uses: octokit/request-action@v5
+        with:
+          route: GET /repos/${{ github.repository }}/actions/artifacts
+        id: list_artifacts
+  
+      - name: Delete old artifacts
+        run: |
+          echo "🧹 Deleting GitHub artifacts older than ${{ github.event.inputs.cleanup_days }} days..."
+          cutoff=$(date -d "-${{ github.event.inputs.cleanup_days }} days" --utc +%Y-%m-%dT%H:%M:%SZ)
+          artifacts=$(echo "${{ steps.list_artifacts.outputs.data }}" | jq -r '.artifacts[] | @base64')
+          for a in $artifacts; do
+            _jq() {
+              echo "$a" | base64 --decode | jq -r "$1"
+            }
+            created=$(_jq '.created_at')
+            id=$(_jq '.id')
+            if [[ "$created" < "$cutoff" ]]; then
+              echo "Deleting artifact id=$id created=$created"
+              curl -s -X DELETE \
+                -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$id"
+            fi
+          done
+          echo "✅ Old GitHub Actions artifacts cleanup complete."
