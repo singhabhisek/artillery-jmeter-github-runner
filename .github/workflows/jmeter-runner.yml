@@ -63,15 +63,14 @@ env:
   REPORT_DIR: "./reports"
   JMETER_HOME: "$HOME/jmeter"
 
-# =========================================================
-# Job 1: Determine final test name
-# =========================================================
 jobs:
+  # =========================================================
+  # Job 1: Determine final test name
+  # =========================================================
   set-test-name:
     runs-on: ubuntu-latest
     outputs:
       final_test_name: ${{ steps.determine.outputs.final_test_name }}
-
     steps:
       - id: determine
         run: |
@@ -84,9 +83,9 @@ jobs:
           echo "final_test_name=$SAFE_NAME" >> $GITHUB_OUTPUT
           echo "✅ Test name set to: $SAFE_NAME"
 
-# =========================================================
-# Job 2: Run JMeter runners
-# =========================================================
+  # =========================================================
+  # Job 2: Run JMeter runners
+  # =========================================================
   run-jmeter:
     needs: set-test-name
     runs-on: ubuntu-latest
@@ -162,15 +161,17 @@ jobs:
           tar -xzf jmeter.tgz -C "$JMETER_HOME" --strip-components=1
           mkdir -p "$JMETER_HOME/lib/ext"
 
-          # CMDRunner 2.3 for MergeResults
+          # CMDRunner 2.3
           curl -L -o "$JMETER_HOME/lib/cmdrunner-2.3.jar" https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.3/cmdrunner-2.3.jar
 
           # Plugins Manager
           curl -sL https://jmeter-plugins.org/get/ -o "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar"
 
           # Install MergeResults plugin
-          java -cp "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar" org.jmeterplugins.repository.PluginManagerCMDInstaller || true
-          java -cp "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar" org.jmeterplugins.repository.PluginManagerCMD install jpgc-mergeresults
+          java -cp "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar:$JMETER_HOME/lib/cmdrunner-2.3.jar" \
+               org.jmeterplugins.repository.PluginManagerCMDInstaller || true
+          java -cp "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar:$JMETER_HOME/lib/cmdrunner-2.3.jar" \
+               org.jmeterplugins.repository.PluginManagerCMD install jpgc-mergeresults
 
       - name: Optional system monitoring
         if: ${{ github.event.inputs.monitor_system == 'true' }}
@@ -236,9 +237,9 @@ jobs:
           name: jmeter-results-runner-${{ matrix.runner_index }}
           path: upload/*.zip
 
-# =========================================================
-# Job 3: Aggregate runner JTLs
-# =========================================================
+  # =========================================================
+  # Job 3: Aggregate runner JTLs
+  # =========================================================
   aggregate-reports:
     needs: run-jmeter
     runs-on: ubuntu-latest
@@ -265,8 +266,10 @@ jobs:
           mkdir -p "$JMETER_HOME/lib/ext"
           curl -L -o "$JMETER_HOME/lib/cmdrunner-2.3.jar" https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.3/cmdrunner-2.3.jar
           curl -sL https://jmeter-plugins.org/get/ -o "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar"
-          java -cp "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar" org.jmeterplugins.repository.PluginManagerCMDInstaller || true
-          java -cp "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar" org.jmeterplugins.repository.PluginManagerCMD install jpgc-mergeresults
+          java -cp "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar:$JMETER_HOME/lib/cmdrunner-2.3.jar" \
+               org.jmeterplugins.repository.PluginManagerCMDInstaller || true
+          java -cp "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar:$JMETER_HOME/lib/cmdrunner-2.3.jar" \
+               org.jmeterplugins.repository.PluginManagerCMD install jpgc-mergeresults
 
       - name: Download runner artifacts
         uses: actions/download-artifact@v4
@@ -312,9 +315,9 @@ jobs:
           name: consolidated-jmeter-results
           path: consolidated-results.zip
 
-# =========================================================
-# Job 4: Cleanup old artifacts
-# =========================================================
+  # =========================================================
+  # Job 4: Cleanup old artifacts
+  # =========================================================
   cleanup-artifacts:
     if: ${{ github.event.inputs.test_type == 'cleanup' }}
     runs-on: ubuntu-latest
