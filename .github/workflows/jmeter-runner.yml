@@ -255,98 +255,68 @@ jobs:
 # =========================================================
 # Job 3: Aggregate runner JTLs (FIXED)
 # =========================================================
-  aggregate-reports:
-    name: Aggregate & Merge JTL Results
+
+  aggregate-results:
+    name: Aggregate JMeter Results
+    # if: ${{ github.event.inputs.action == 'run-tests' && github.event.inputs.aggregate == 'Y' }}
+    # needs: run-jmeter
     runs-on: ubuntu-latest
-    needs: [run-jmeter]
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-  
-      - name: Download merged artifacts
+      # Checkout repo for aggregation
+      - uses: actions/checkout@v4
+
+      # Setup Java for aggregation
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Install JMeter on aggregation runner
+      - name: Install JMeter
+        run: |
+          JMETER_VERSION=5.6.3
+          curl -L https://downloads.apache.org/jmeter/binaries/apache-jmeter-$JMETER_VERSION.tgz -o jmeter.tgz
+          tar -xzf jmeter.tgz
+          mv apache-jmeter-$JMETER_VERSION $HOME/jmeter
+          echo "$HOME/jmeter/bin" >> $GITHUB_PATH
+
+      # Download all matrix artifacts
+      - name: Download matrix artifacts
         uses: actions/download-artifact@v4
         with:
-          path: merged-artifacts
-  
-      - name: Install JMeter & MergeResults Plugin
-        shell: bash
+          path: merged-results
+
+      # Merge JTL files into one
+      - name: Merge JTL files
         run: |
-          JMETER_HOME="$HOME/jmeter"
-  
-          echo "📦 Setting up JMeter environment..."
-          mkdir -p "$JMETER_HOME"
-          # Download and extract JMeter
-          curl -sL "https://downloads.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz" -o jmeter.tgz
-          tar -xzf jmeter.tgz -C "$JMETER_HOME" --strip-components=1
-          mkdir -p "$JMETER_HOME/lib/ext"
-  
-          echo "⚙️ Installing CMDRunner and Plugins Manager..."
-          # Download CMDRunner
-          curl -L -o "$JMETER_HOME/lib/cmdrunner-2.3.jar" \
-            https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.3/cmdrunner-2.3.jar
-          # Download Plugins Manager JAR
-          curl -L -o "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar" \
-            https://jmeter-plugins.org/get/
-  
-          echo "🔌 Installing MergeResults plugin..."
-          # FIX: Including the entire $JMETER_HOME/lib/* in the classpath is necessary
-          # for PluginManagerCMD to find ApacheJMeter.jar and other dependencies.
-          JAVA_CLASSPATH="$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar:$JMETER_HOME/lib/cmdrunner-2.3.jar:$JMETER_HOME/lib/*"
-          
-          java -cp "$JAVA_CLASSPATH" \
-            org.jmeterplugins.repository.PluginManagerCMD install jpgc-mergeresults || {
-              echo "❌ Failed to install MergeResults plugin"
-              exit 1
-            }
-  
-          echo "✅ JMeter and MergeResults plugin installed successfully!"
-  
-      - name: Merge JTL Files
-        shell: bash
-        run: |
-          mkdir -p final-results
-  
-          # Unzip any compressed runner results
-          for zipfile in $(find merged-artifacts -type f -name "*.zip"); do
-            echo "📂 Unzipping $zipfile ..."
-            unzip -o "$zipfile" -d merged-artifacts/unzipped/
-          done
-  
-          # Find all JTLs recursively
-          mapfile -t JTLS < <(find merged-artifacts -type f -name "*.jtl")
-          if [ ${#JTLS[@]} -eq 0 ]; then
-            echo "❌ No JTL files found!"
+          mkdir -p final-results  # Folder for merged results
+          echo "Merging JTL files from matrix runs..."
+          first_file=$(find merged-results -name "*.jtl" | head -n 1)  # Get first file
+          if [ -z "$first_file" ]; then
+            echo "❌ No JTL files found in artifacts!"
             exit 1
           fi
-  
-          echo "✅ Found ${#JTLS[@]} JTL files:"
-          for f in "${JTLS[@]}"; do
-            echo " - $f"
+          head -n 1 "$first_file" > final-results/merged.jtl  # Copy header
+          find merged-results -name "*.jtl" | while read file; do
+            tail -n +2 "$file" >> final-results/merged.jtl  # Append without header
           done
-  
-          # Merge all JTLs using CMDRunner
-          MERGED_JTL="final-results/merged.jtl"
-          CMD_JAR="$HOME/jmeter/lib/cmdrunner-2.3.jar"
-          JAVA_CMD="java -jar \"$CMD_JAR\" --tool Reporter --plugin-type MergeResults"
-          for f in "${JTLS[@]}"; do
-            JAVA_CMD="$JAVA_CMD --input-jtl \"$f\""
-          done
-          JAVA_CMD="$JAVA_CMD --generate-csv \"$MERGED_JTL\""
-  
-          echo "🚀 Running MergeResults..."
-          eval "$JAVA_CMD" || {
-            echo "❌ Failed to merge JTLs"
-            exit 1
-          }
-  
-          echo "✅ Merged JTL created at: $MERGED_JTL"
-  
-      - name: Upload Merged Results
+          echo "✅ Merged JTL created at final-results/merged.jtl"
+
+      # Generate merged HTML report
+      - name: Generate merged HTML report
+        run: |
+          jmeter -g final-results/merged.jtl -o final-results/merged-report -Duser.timezone=America/New_York || echo "⚠️ Report generation skipped"
+
+      # Upload merged artifacts
+      - name: Upload merged results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: final-merged-results
+          name: jmeter-merged-results-${{ needs.prepare.outputs.RUN_ID }}
           path: final-results/
-        
+          retention-days: ${{ github.event.inputs.retention_days }}
 # =========================================================
 # Job 4: Cleanup old artifacts
 # =========================================================
