@@ -255,89 +255,89 @@ jobs:
 # =========================================================
 # Job 3: Aggregate runner JTLs
 # =========================================================
-    aggregate-reports:
-      needs: run-jmeter
-      runs-on: ubuntu-latest
-      if: ${{ github.event.inputs.test_type == 'load' }}
-      steps:
-        - name: Checkout repository
-          uses: actions/checkout@v4
-  
-        - name: Setup Java
-          uses: actions/setup-java@v4
-          with:
-            distribution: temurin
-            java-version: '17'
-  
-        - name: Install dependencies
-          run: sudo apt-get update && sudo apt-get install -y curl unzip jq
-  
-        - name: Install JMeter & Plugins
-          run: |
-            JMETER_HOME="$HOME/jmeter"
-            mkdir -p "$JMETER_HOME"
-            curl -sL "https://downloads.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz" -o jmeter.tgz
-            tar -xzf jmeter.tgz -C "$JMETER_HOME" --strip-components=1
-            mkdir -p "$JMETER_HOME/lib/ext"
-  
-            # CMDRunner
-            curl -L -o "$JMETER_HOME/lib/cmdrunner-2.3.jar" https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.3/cmdrunner-2.3.jar
-  
-            # Plugins Manager
-            curl -sL https://jmeter-plugins.org/get/ -o "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar"
-            java -cp "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar" \
-                 org.jmeterplugins.repository.PluginManagerCMDInstaller || true
-  
-            # Install MergeResults plugin via PluginManagerCMD
-            chmod +x "$JMETER_HOME/bin/PluginsManagerCMD.sh"
-            "$JMETER_HOME/bin/PluginsManagerCMD.sh" install jpgc-mergeresults
-  
-        - name: Download runner artifacts
-          uses: actions/download-artifact@v4
-          with:
-            path: merged-artifacts
-  
-        - name: Merge multiple JTLs
-          shell: bash
-          run: |
-            mkdir -p final-results
-            mapfile -t JTLS < <(find merged-artifacts -type f -name "*.jtl")
-            if [ ${#JTLS[@]} -eq 0 ]; then
-              echo "❌ No JTL files found."
-              exit 1
-            fi
-  
-            # Merge JTLs using CMDRunner
-            MERGED_JTL="final-results/merged.jtl"
-            CMD_JAR="$HOME/jmeter/lib/cmdrunner-2.3.jar"
-            JAVA_CMD="java -jar \"$CMD_JAR\" --tool Reporter --plugin-type MergeResults"
-            for f in "${JTLS[@]}"; do
-              JAVA_CMD="$JAVA_CMD --input-jtl \"$f\""
-            done
-            JAVA_CMD="$JAVA_CMD --generate-csv \"$MERGED_JTL\""
-            eval "$JAVA_CMD"
-            echo "✅ Merged JTL created: $MERGED_JTL"
-  
-        - name: Generate HTML Dashboard
-          run: |
-            MERGED_JTL="final-results/merged.jtl"
-            REPORT_DIR="final-results/html-report"
-            mkdir -p "$REPORT_DIR"
-            "$HOME/jmeter/bin/jmeter" -g "$MERGED_JTL" -o "$REPORT_DIR"
-            echo "✅ HTML report generated at $REPORT_DIR"
-  
-        - name: Package consolidated artifacts
-          run: |
-            mkdir -p final-upload
-            cp merged-artifacts/**/*.zip final-upload/ || true
-            cp -r final-results final-upload/final-results || true
-            zip -r "consolidated-results.zip" final-upload/
-  
-        - uses: actions/upload-artifact@v4
-          with:
-            name: consolidated-jmeter-results
-            path: consolidated-results.zip
-  
+  aggregate-reports:
+    needs: run-jmeter
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.test_type == 'load' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y curl unzip jq
+
+      - name: Install JMeter & Plugins
+        run: |
+          JMETER_HOME="$HOME/jmeter"
+          mkdir -p "$JMETER_HOME"
+          curl -sL "https://downloads.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz" -o jmeter.tgz
+          tar -xzf jmeter.tgz -C "$JMETER_HOME" --strip-components=1
+          mkdir -p "$JMETER_HOME/lib/ext"
+
+          # CMDRunner
+          curl -L -o "$JMETER_HOME/lib/cmdrunner-2.3.jar" https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.3/cmdrunner-2.3.jar
+
+          # Plugins Manager
+          curl -sL https://jmeter-plugins.org/get/ -o "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar"
+          java -cp "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar" \
+               org.jmeterplugins.repository.PluginManagerCMDInstaller || true
+
+          # Install MergeResults plugin via PluginManagerCMD
+          chmod +x "$JMETER_HOME/bin/PluginsManagerCMD.sh"
+          "$JMETER_HOME/bin/PluginsManagerCMD.sh" install jpgc-mergeresults
+
+      - name: Download runner artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: merged-artifacts
+
+      - name: Merge multiple JTLs
+        shell: bash
+        run: |
+          mkdir -p final-results
+          mapfile -t JTLS < <(find merged-artifacts -type f -name "*.jtl")
+          if [ ${#JTLS[@]} -eq 0 ]; then
+            echo "❌ No JTL files found."
+            exit 1
+          fi
+
+          # Merge JTLs using CMDRunner
+          MERGED_JTL="final-results/merged.jtl"
+          CMD_JAR="$HOME/jmeter/lib/cmdrunner-2.3.jar"
+          JAVA_CMD="java -jar \"$CMD_JAR\" --tool Reporter --plugin-type MergeResults"
+          for f in "${JTLS[@]}"; do
+            JAVA_CMD="$JAVA_CMD --input-jtl \"$f\""
+          done
+          JAVA_CMD="$JAVA_CMD --generate-csv \"$MERGED_JTL\""
+          eval "$JAVA_CMD"
+          echo "✅ Merged JTL created: $MERGED_JTL"
+
+      - name: Generate HTML Dashboard
+        run: |
+          MERGED_JTL="final-results/merged.jtl"
+          REPORT_DIR="final-results/html-report"
+          mkdir -p "$REPORT_DIR"
+          "$HOME/jmeter/bin/jmeter" -g "$MERGED_JTL" -o "$REPORT_DIR"
+          echo "✅ HTML report generated at $REPORT_DIR"
+
+      - name: Package consolidated artifacts
+        run: |
+          mkdir -p final-upload
+          cp merged-artifacts/**/*.zip final-upload/ || true
+          cp -r final-results final-upload/final-results || true
+          zip -r "consolidated-results.zip" final-upload/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: consolidated-jmeter-results
+          path: consolidated-results.zip
+
 
 # =========================================================
 # Job 4: Cleanup old artifacts
