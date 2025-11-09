@@ -301,17 +301,26 @@ jobs:
         shell: bash
         run: |
           mkdir -p final-results
-          # List all runner directories recursively
-          echo "===== Full contents of merged-artifacts ====="
-          find merged-artifacts -type d -print
+
+          # List all runner directories
+          echo "===== Runner directories ====="
+          ls -lh merged-artifacts || true
           
-          echo "===== Listing all files recursively ====="
-          find merged-artifacts -type f | sort
+          # Unzip all runner ZIPs into a temporary folder
+          mkdir -p merged-artifacts/unzipped
+          for zipfile in merged-artifacts/*/*.zip; do
+            echo "Unzipping $zipfile ..."
+            unzip -o "$zipfile" -d merged-artifacts/unzipped/
+          done
           
-          # Now find all JTL files recursively
-          mapfile -t JTLS < <(find merged-artifacts -type f -name "*.jtl")
+          # List the contents of the unzipped folder
+          echo "===== Contents of merged-artifacts/unzipped ====="
+          find merged-artifacts/unzipped/ -type f | sort
+          
+          # Find all JTL files inside the unzipped directories
+          mapfile -t JTLS < <(find merged-artifacts/unzipped/ -type f -name "*.jtl")
           if [ ${#JTLS[@]} -eq 0 ]; then
-            echo "❌ No JTL files found inside runner directories."
+            echo "❌ No JTL files found in unzipped artifacts."
             exit 1
           fi
           
