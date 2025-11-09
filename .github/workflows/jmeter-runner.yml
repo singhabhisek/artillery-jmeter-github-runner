@@ -253,7 +253,7 @@ jobs:
           path: upload/*.zip
 
 # =========================================================
-# Job 3: Aggregate runner JTLs (DEBUGGED)
+# Job 3: Aggregate runner JTLs with MergeResults (fixed)
 # =========================================================
   aggregate-reports:
     needs: run-jmeter
@@ -272,7 +272,7 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl unzip jq
   
-      - name: Install JMeter & CMDRunner
+      - name: Install JMeter, CMDRunner & MergeResults plugin
         run: |
           JMETER_HOME="$HOME/jmeter"
           mkdir -p "$JMETER_HOME"
@@ -292,10 +292,9 @@ jobs:
           unzip -o /tmp/jpgc-mergeresults-2.1.zip -d /tmp/mergeresults-plugin
           find /tmp/mergeresults-plugin -name "*.jar" -exec cp {} "$JMETER_HOME/lib/ext/" \;
   
-          echo "✅ JMeter, CMDRunner and MergeResults plugin installed."
+          echo "✅ JMeter, CMDRunner & MergeResults plugin installed"
           echo "CMDRunner location: $JMETER_HOME/lib/cmdrunner-2.3.jar"
           echo "MergeResults JARs in: $JMETER_HOME/lib/ext/"
-          ls -lh "$JMETER_HOME/lib/ext/"
   
       - name: Download runner artifacts
         uses: actions/download-artifact@v4
@@ -304,17 +303,18 @@ jobs:
   
       - name: Unzip runner results recursively
         run: |
-          echo "📂 Unzipping runner results..."
+          echo "📂 Unzipping all runner ZIPs..."
           mkdir -p merged-artifacts/unzipped
-          find merged-artifacts -type f -name "*.zip" | while read zipfile; do
+          shopt -s globstar
+          for zipfile in merged-artifacts/**/*.zip; do
             echo "Unzipping $zipfile ..."
             unzip -o "$zipfile" -d merged-artifacts/unzipped/
           done
   
-          echo "===== Contents of merged-artifacts/unzipped ====="
+          echo "✅ Listing all files after unzip:"
           find merged-artifacts/unzipped/ -type f | sort
   
-      - name: Aggregate JTL files
+      - name: Aggregate JTL files and generate dashboard
         run: |
           mkdir -p final-results
   
@@ -330,7 +330,7 @@ jobs:
             echo " - $f"
           done
   
-          # Create merge-results.properties for CMDRunner
+          # Create merge-results.properties
           MERGE_PROPS="$HOME/jmeter/bin/merge-results.properties"
           > "$MERGE_PROPS"
           for f in "${JTLS[@]}"; do
@@ -341,9 +341,11 @@ jobs:
           echo "📝 Merge properties file contents:"
           cat "$MERGE_PROPS"
   
-          # Merge JTLs using CMDRunner
+          # Merge JTLs using CMDRunner with correct classpath
           echo "⚙️ Merging JTL files..."
-          java -Xms256m -Xmx512m -jar "$HOME/jmeter/lib/cmdrunner-2.3.jar" \
+          java -Xms256m -Xmx512m -cp \
+            "$HOME/jmeter/lib/cmdrunner-2.3.jar:$HOME/jmeter/lib/ext/jmeter-plugins-mergeresults-2.1.jar" \
+            kg.apc.cmdtools.PluginsCMD \
             --tool Reporter \
             --generate-csv final-results/merged.jtl \
             --input-jtl "$MERGE_PROPS" \
@@ -365,7 +367,8 @@ jobs:
           cp -r final-results final-upload/final-results || true
           zip -r "consolidated-results.zip" final-upload/
   
-      - uses: actions/upload-artifact@v4
+      - name: Upload consolidated artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: consolidated-jmeter-results
           path: consolidated-results.zip
