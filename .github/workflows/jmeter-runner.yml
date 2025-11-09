@@ -260,7 +260,7 @@ jobs:
           mkdir -p "$RESULT_DIR"
 
           # Run JMeter in non-GUI mode, passing environment variables
-          jmeter -n \
+          $HOME/jmeter/bin/jmeter -n \
             -t "applications/$APP_NAME/scripts/$JMX_FILE" \
             -l "$RESULT_DIR/results-runner-${{ matrix.runner_index }}.jtl" \
             -e -o "$RESULT_DIR/html-report" \
