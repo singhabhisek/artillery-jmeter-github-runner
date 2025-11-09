@@ -264,8 +264,7 @@ jobs:
 # =========================================================
   aggregate-results:
     name: Aggregate JMeter Results
-    if: ${{ github.event.inputs.action == 'run-tests' && github.event.inputs.aggregate == 'Y' }}
-    needs: run-tests                     # <- adjust if your test job has a different name
+    needs: run-jmeter                     # <- adjust if your test job has a different name
     runs-on: ubuntu-latest
     steps:
       # 1) checkout so any utilities (if needed) are available
