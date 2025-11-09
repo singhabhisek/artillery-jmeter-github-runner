@@ -322,7 +322,7 @@ jobs:
             --generate-jtl $GITHUB_WORKSPACE/merged.jtl
   
       - name: Upload merged JTL
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: merged-jtl
           path: merged.jtl
