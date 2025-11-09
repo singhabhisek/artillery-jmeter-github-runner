@@ -6,7 +6,7 @@ run-name: >
 on:
   workflow_dispatch:
     inputs:
-      app_name:e
+      app_name:
         description: "Application name (e.g., app1, app2)"
         required: true
       jmx_file:
@@ -333,8 +333,6 @@ jobs:
           name: merged-jtl
           path: merged.jtl
 
-
-          
 # =========================================================
 # Job 4: Cleanup old artifacts
 # =========================================================
