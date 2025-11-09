@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       app_name:
-        description: "Application name (e.g., App1, App2)"
+        description: "Application name (e.g., app1, app2)"
         required: true
-      jmx_name:
+      jmx_file:
         description: "Which JMeter test plan to run?"
         required: false
         default: "sample_jmeter.jmx"
@@ -18,7 +18,7 @@ on:
           - sample_jmeter.jmx
           - High_TPS_Runner.jmx
       test_type:
-        description: "Choose test type (e.g., load/cleanup)"
+        description: "Choose test type (load/cleanup)"
         required: true
         type: choice
         options:
@@ -59,8 +59,7 @@ on:
 
 env:
   JMETER_VERSION: "5.6.3"            # JMeter version to install
-  SCRIPTS_DIR: "./scripts"           # Directory containing JMeter scripts
-  REPORT_DIR: "./jmeter-results"     # Base directory for runner results
+  REPORT_DIR: "./reports"            # Base directory for runner results
   JMETER_HOME: "$HOME/jmeter"        # JMeter installation directory
 
 # =========================================================
@@ -75,14 +74,14 @@ jobs:
     steps:
       - id: determine
         run: |
-          # If user provides test_name, use it; else fallback to timestamp
+          # Use user-provided test_name or fallback to timestamp
           if [ -n "${{ github.event.inputs.test_name }}" ]; then
             NAME="${{ github.event.inputs.test_name }}"
           else
             NAME=$(date +%Y%m%d%H%M)
           fi
 
-          # Sanitize: replace non-alphanumeric characters with underscores
+          # Sanitize test name
           SAFE_NAME=$(echo "$NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
 
           # Export for downstream jobs
@@ -102,7 +101,7 @@ jobs:
 
     steps:
       # -------------------------------
-      # Checkout repository
+      # Checkout repo
       # -------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -138,19 +137,19 @@ jobs:
         shell: bash
         run: |
           APP_NAME="${{ github.event.inputs.app_name }}"
-          echo "ℹ️ Running test for app: $APP_NAME"
+          JMX_FILE="${{ github.event.inputs.jmx_file }}"
+          echo "ℹ️ Running test for app: $APP_NAME, using script: $JMX_FILE"
 
-          # Path to app-specific .env file
-          ENV_FILE="./${APP_NAME}/.env"
+          # Path to app-specific .env
+          ENV_FILE="applications/$APP_NAME/.env"
 
           if [ -f "$ENV_FILE" ]; then
             echo "✅ Loading environment variables from $ENV_FILE"
-            # Export all non-comment, non-empty lines
             set -o allexport
             grep -v '^#' "$ENV_FILE" | grep -v '^\s*$' | while read -r line; do
               if [[ "$line" == *"="* ]]; then
-                varname=$(echo "$line" | cut -d '=' -f 1)
-                value=$(echo "$line" | cut -d '=' -f 2-)
+                varname=$(echo "$line" | cut -d '=' -f1)
+                value=$(echo "$line" | cut -d '=' -f2-)
                 export "$varname=$value"
                 echo "   Loaded $varname"
               fi
@@ -167,7 +166,7 @@ jobs:
             export AWS_SECRET_KEY="${AWS_SECRET_KEY:-}"
           fi
 
-          # Export for GitHub Actions downstream steps
+          # Export for downstream steps
           echo "DURATION=$DURATION" >> $GITHUB_ENV
           echo "THREADS=$THREADS" >> $GITHUB_ENV
           echo "RAMPUP=$RAMPUP" >> $GITHUB_ENV
@@ -176,32 +175,37 @@ jobs:
           echo "AWS_ACCESS_KEY=$AWS_ACCESS_KEY" >> $GITHUB_ENV
           echo "AWS_SECRET_KEY=$AWS_SECRET_KEY" >> $GITHUB_ENV
           echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
-          echo "${{ github.event.inputs.jmx_name }}"
+          echo "JMX_FILE=$JMX_FILE" >> $GITHUB_ENV
 
       # -------------------------------
-      # Check JMeter test plan exists
+      # Validate JMeter test plan exists
       # -------------------------------
       - name: Check JMeter test plan exists
         run: |
-          TEST_PLAN="${{ env.SCRIPTS_DIR }}/$APP_NAME/${{ github.event.inputs.jmx_name }}"
+          TEST_PLAN="applications/${{ github.event.inputs.app_name }}/scripts/${{ github.event.inputs.jmx_file }}"
           if [ ! -f "$TEST_PLAN" ]; then
             echo "❌ Test plan $TEST_PLAN not found!"
             exit 1
           fi
-          echo "✅ Test plan found: $TEST_PLAN"
+          echo "✅ Test plan exists: $TEST_PLAN"
 
       # -------------------------------
-      # Install JMeter
+      # Install JMeter if not present
       # -------------------------------
       - name: Install JMeter
         run: |
-          JMETER_VERSION=${{ env.JMETER_VERSION }}
-          mkdir -p $HOME/jmeter
-          curl -L https://downloads.apache.org/jmeter/binaries/apache-jmeter-$JMETER_VERSION.tgz -o jmeter.tgz
-          tar -xzf jmeter.tgz
-          mv apache-jmeter-$JMETER_VERSION $HOME/jmeter
-          echo "$HOME/jmeter/bin" >> $GITHUB_PATH
-          echo "✅ JMeter installed"
+          if [ ! -d "$HOME/jmeter" ]; then
+            echo "ℹ️ Installing JMeter..."
+            JMETER_VERSION=${{ env.JMETER_VERSION }}
+            mkdir -p $HOME/jmeter
+            curl -L https://downloads.apache.org/jmeter/binaries/apache-jmeter-$JMETER_VERSION.tgz -o jmeter.tgz
+            tar -xzf jmeter.tgz
+            mv apache-jmeter-$JMETER_VERSION $HOME/jmeter
+            echo "$HOME/jmeter/bin" >> $GITHUB_PATH
+            echo "✅ JMeter installed"
+          else
+            echo "ℹ️ JMeter already installed, skipping download."
+          fi
 
       # -------------------------------
       # Install required plugins
@@ -255,12 +259,12 @@ jobs:
           RESULT_DIR="${{ env.REPORT_DIR }}/${TEST_NAME}-runner-${{ matrix.runner_index }}-$TIMESTAMP"
           mkdir -p "$RESULT_DIR"
 
-          # Run JMeter in non-GUI mode, passing all variables
+          # Run JMeter in non-GUI mode, passing environment variables
           jmeter -n \
-            -t "${{ env.SCRIPTS_DIR }}/$APP_NAME/${{ github.event.inputs.jmx_name }}" \
-            -l "$RESULT_DIR/results.jtl" \
+            -t "applications/$APP_NAME/scripts/$JMX_FILE" \
+            -l "$RESULT_DIR/results-runner-${{ matrix.runner_index }}.jtl" \
             -e -o "$RESULT_DIR/html-report" \
-            -j "$RESULT_DIR/jmeter.log" \
+            -j "$RESULT_DIR/jmeter-runner-${{ matrix.runner_index }}.log" \
             -Jjmeter.save.saveservice.autoflush=true \
             -JDURATION="$DURATION" \
             -JTHREADS="$THREADS" \
@@ -271,6 +275,7 @@ jobs:
             -JAWS_SECRET_KEY="$AWS_SECRET_KEY" \
             -JAPP_NAME="$APP_NAME"
 
+          # Export result dir
           echo "result_dir=$RESULT_DIR" >> $GITHUB_OUTPUT
 
       # -------------------------------
@@ -349,7 +354,7 @@ jobs:
             echo "❌ No JTL files found to merge."
             exit 1
           fi
-          echo "ℹ️ Merging ${#JTLS[@]} JTL files using MergeResults plugin..."
+          echo "ℹ️ Merging ${#JTLS[@]} JTL files..."
           CMD_JAR="$HOME/jmeter/lib/cmdrunner-2.2.1.jar"
           MERGED_JTL="final-results/merged.jtl"
           JAVA_CMD="java -jar \"$CMD_JAR\" --tool Reporter --plugin-type MergeResults"
