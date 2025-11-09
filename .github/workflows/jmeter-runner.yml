@@ -146,7 +146,7 @@ jobs:
 
       - name: Check JMeter test plan exists
         run: |
-          TEST_PLAN="${{ env.SCRIPTS_DIR }}/$APP_NAME/${{ github.event.inputs.jmx_file }}"
+          TEST_PLAN="${{ env.SCRIPTS_DIR }}/$APP_NAME/scripts/${{ github.event.inputs.jmx_file }}"
           if [ ! -f "$TEST_PLAN" ]; then
             echo "❌ Test plan $TEST_PLAN not found!"
             exit 1
@@ -162,7 +162,7 @@ jobs:
           tar -xzf jmeter.tgz -C "$JMETER_HOME" --strip-components=1
           mkdir -p "$JMETER_HOME/lib/ext"
 
-          # CMDRunner for MergeResults
+          # CMDRunner 2.3 for MergeResults
           curl -L -o "$JMETER_HOME/lib/cmdrunner-2.3.jar" https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.3/cmdrunner-2.3.jar
 
           # Plugins Manager
@@ -199,7 +199,7 @@ jobs:
           mkdir -p "$RESULT_DIR"
 
           "$HOME/jmeter/bin/jmeter" -n \
-            -t "${{ env.SCRIPTS_DIR }}/$APP_NAME/${{ github.event.inputs.jmx_file }}" \
+            -t "${{ env.SCRIPTS_DIR }}/$APP_NAME/scripts/${{ github.event.inputs.jmx_file }}" \
             -l "$RESULT_DIR/results-runner-${{ matrix.runner_index }}.jtl" \
             -e -o "$RESULT_DIR/html-report" \
             -j "$RESULT_DIR/jmeter-runner-${{ matrix.runner_index }}.log" \
