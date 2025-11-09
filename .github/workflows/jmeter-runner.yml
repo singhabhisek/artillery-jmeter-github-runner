@@ -302,7 +302,7 @@ jobs:
           path: merged-results        # <- THIS matches your working job's path
   
       # 6) Debug listing so you can see exactly what's downloaded
-      - name: Debug: list merged-results contents
+      - name: Debug list merged-results contents
         run: |
           echo "===== merged-results top-level ====="
           ls -la merged-results || true
