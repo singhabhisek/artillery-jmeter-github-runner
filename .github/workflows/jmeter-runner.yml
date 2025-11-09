@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       app_name:
-        description: "Application name (e.g., app1, app2)"
+        description: "Application name (e.g., App1, App2)"
         required: true
       jmx_file:
         description: "Which JMeter test plan to run?"
@@ -18,7 +18,7 @@ on:
           - sample_jmeter.jmx
           - High_TPS_Runner.jmx
       test_type:
-        description: "Choose test type (load/cleanup)"
+        description: "Choose test type (e.g., load/cleanup)"
         required: true
         type: choice
         options:
@@ -70,21 +70,16 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       final_test_name: ${{ steps.determine.outputs.final_test_name }}
-
     steps:
       - id: determine
         run: |
-          # Use user-provided test_name or fallback to timestamp
+          # Use provided test_name or fallback to timestamp
           if [ -n "${{ github.event.inputs.test_name }}" ]; then
             NAME="${{ github.event.inputs.test_name }}"
           else
             NAME=$(date +%Y%m%d%H%M)
           fi
-
-          # Sanitize test name
           SAFE_NAME=$(echo "$NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
-
-          # Export for downstream jobs
           echo "final_test_name=$SAFE_NAME" >> $GITHUB_OUTPUT
           echo "✅ Test name set to: $SAFE_NAME"
 
@@ -98,7 +93,6 @@ jobs:
       fail-fast: false
       matrix:
         runner_index: [1,2,3,4]
-
     steps:
       # -------------------------------
       # Checkout repo
@@ -137,12 +131,9 @@ jobs:
         shell: bash
         run: |
           APP_NAME="${{ github.event.inputs.app_name }}"
-          JMX_FILE="${{ github.event.inputs.jmx_file }}"
-          echo "ℹ️ Running test for app: $APP_NAME, using script: $JMX_FILE"
+          echo "ℹ️ Running test for app: $APP_NAME"
 
-          # Path to app-specific .env
           ENV_FILE="applications/$APP_NAME/.env"
-
           if [ -f "$ENV_FILE" ]; then
             echo "✅ Loading environment variables from $ENV_FILE"
             set -o allexport
@@ -156,17 +147,10 @@ jobs:
             done
             set +o allexport
           else
-            echo "⚠️ .env file not found for $APP_NAME, using defaults or empty values"
-            export DURATION="${DURATION:-}"
-            export THREADS="${THREADS:-}"
-            export RAMPUP="${RAMPUP:-}"
-            export AUTH_HEADER="${AUTH_HEADER:-}"
-            export API_KEY="${API_KEY:-}"
-            export AWS_ACCESS_KEY="${AWS_ACCESS_KEY:-}"
-            export AWS_SECRET_KEY="${AWS_SECRET_KEY:-}"
+            echo "⚠️ .env file not found for $APP_NAME, using defaults"
           fi
 
-          # Export for downstream steps
+          # Export variables for downstream steps
           echo "DURATION=$DURATION" >> $GITHUB_ENV
           echo "THREADS=$THREADS" >> $GITHUB_ENV
           echo "RAMPUP=$RAMPUP" >> $GITHUB_ENV
@@ -175,32 +159,33 @@ jobs:
           echo "AWS_ACCESS_KEY=$AWS_ACCESS_KEY" >> $GITHUB_ENV
           echo "AWS_SECRET_KEY=$AWS_SECRET_KEY" >> $GITHUB_ENV
           echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
-          echo "JMX_FILE=$JMX_FILE" >> $GITHUB_ENV
+          echo "JMX_FILE=${{ github.event.inputs.jmx_file }}" >> $GITHUB_ENV
 
       # -------------------------------
-      # Validate JMeter test plan exists
+      # Verify selected JMX file exists
       # -------------------------------
       - name: Check JMeter test plan exists
+        shell: bash
         run: |
-          TEST_PLAN="applications/${{ github.event.inputs.app_name }}/scripts/${{ github.event.inputs.jmx_file }}"
+          TEST_PLAN="applications/$APP_NAME/scripts/${{ github.event.inputs.jmx_file }}"
           if [ ! -f "$TEST_PLAN" ]; then
             echo "❌ Test plan $TEST_PLAN not found!"
             exit 1
           fi
-          echo "✅ Test plan exists: $TEST_PLAN"
+          echo "✅ Test plan found: $TEST_PLAN"
 
       # -------------------------------
-      # Install JMeter if not present
+      # Install JMeter (only if not present)
       # -------------------------------
       - name: Install JMeter
+        shell: bash
         run: |
-          if [ ! -d "$HOME/jmeter" ]; then
+          if [ ! -f "$HOME/jmeter/bin/jmeter" ]; then
             echo "ℹ️ Installing JMeter..."
-            JMETER_VERSION=${{ env.JMETER_VERSION }}
             mkdir -p $HOME/jmeter
-            curl -L https://downloads.apache.org/jmeter/binaries/apache-jmeter-$JMETER_VERSION.tgz -o jmeter.tgz
+            curl -L https://downloads.apache.org/jmeter/binaries/apache-jmeter-${{ env.JMETER_VERSION }}.tgz -o jmeter.tgz
             tar -xzf jmeter.tgz
-            mv apache-jmeter-$JMETER_VERSION $HOME/jmeter
+            mv apache-jmeter-${{ env.JMETER_VERSION }}/* $HOME/jmeter/
             echo "$HOME/jmeter/bin" >> $GITHUB_PATH
             echo "✅ JMeter installed"
           else
@@ -211,18 +196,17 @@ jobs:
       # Install required plugins
       # -------------------------------
       - name: Install JMeter Plugins
+        shell: bash
         run: |
           mkdir -p $HOME/jmeter/lib/ext
           # Dummy plugin
           curl -L -o /tmp/jpgc-dummy-0.4.zip https://jmeter-plugins.org/files/packages/jpgc-dummy-0.4.zip
           unzip -o /tmp/jpgc-dummy-0.4.zip -d /tmp/dummy-plugin
           find /tmp/dummy-plugin -name "*.jar" -exec cp {} $HOME/jmeter/lib/ext/ \;
-
           # Ultimate Thread Group
           curl -L -o /tmp/jpgc-ultimate-thread-group-3.0.zip https://jmeter-plugins.org/files/packages/jpgc-casutg-3.1.1.zip
           unzip -o /tmp/jpgc-ultimate-thread-group-3.0.zip -d /tmp/ultimate-plugin
           find /tmp/ultimate-plugin -name "*.jar" -exec cp {} $HOME/jmeter/lib/ext/ \;
-
           # CMDRunner
           curl -L -o /tmp/cmdrunner-2.3.jar https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.3/cmdrunner-2.3.jar
           cp /tmp/cmdrunner-2.3.jar $HOME/jmeter/lib/
@@ -232,6 +216,7 @@ jobs:
       # -------------------------------
       - name: Start system monitoring (optional)
         if: ${{ github.event.inputs.monitor_system == 'true' }}
+        shell: bash
         run: |
           mkdir -p "${{ env.REPORT_DIR }}"
           LOG_FILE="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-system.log"
@@ -253,15 +238,16 @@ jobs:
       # -------------------------------
       - name: Run JMeter Test
         id: run_test
+        shell: bash
         run: |
           TEST_NAME="${{ needs.set-test-name.outputs.final_test_name }}"
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
           RESULT_DIR="${{ env.REPORT_DIR }}/${TEST_NAME}-runner-${{ matrix.runner_index }}-$TIMESTAMP"
           mkdir -p "$RESULT_DIR"
 
-          # Run JMeter in non-GUI mode, passing environment variables
+          # Execute JMeter in non-GUI mode with environment variables
           $HOME/jmeter/bin/jmeter -n \
-            -t "applications/$APP_NAME/scripts/$JMX_FILE" \
+            -t "applications/$APP_NAME/scripts/${{ github.event.inputs.jmx_file }}" \
             -l "$RESULT_DIR/results-runner-${{ matrix.runner_index }}.jtl" \
             -e -o "$RESULT_DIR/html-report" \
             -j "$RESULT_DIR/jmeter-runner-${{ matrix.runner_index }}.log" \
@@ -275,7 +261,6 @@ jobs:
             -JAWS_SECRET_KEY="$AWS_SECRET_KEY" \
             -JAPP_NAME="$APP_NAME"
 
-          # Export result dir
           echo "result_dir=$RESULT_DIR" >> $GITHUB_OUTPUT
 
       # -------------------------------
@@ -283,6 +268,7 @@ jobs:
       # -------------------------------
       - name: Stop system monitoring
         if: ${{ github.event.inputs.monitor_system == 'true' }}
+        shell: bash
         run: |
           if [ -f /tmp/monitor_pid.txt ]; then
             kill $(cat /tmp/monitor_pid.txt) || true
@@ -293,6 +279,7 @@ jobs:
       # Package runner artifacts
       # -------------------------------
       - name: Package Runner Artifacts
+        shell: bash
         run: |
           ZIP_NAME="runner-${{ matrix.runner_index }}-results.zip"
           mkdir -p upload
@@ -332,7 +319,6 @@ jobs:
           curl -sL "https://downloads.apache.org/jmeter/binaries/apache-jmeter-${{ env.JMETER_VERSION }}.tgz" -o jmeter.tgz
           tar -xzf jmeter.tgz -C $JMETER_HOME --strip-components=1
           mkdir -p $JMETER_HOME/lib/ext
-          # Install PluginsManager + CMDRunner + MergeResults
           curl -sL https://jmeter-plugins.org/get/ -o $JMETER_HOME/lib/ext/jmeter-plugins-manager.jar
           curl -sL https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.2.1/cmdrunner-2.2.1.jar -o $JMETER_HOME/lib/cmdrunner-2.2.1.jar
           java -cp $JMETER_HOME/lib/ext/jmeter-plugins-manager.jar org.jmeterplugins.repository.PluginManagerCMDInstaller || true
@@ -347,7 +333,6 @@ jobs:
       - name: Merge multiple JTLs
         shell: bash
         run: |
-          set -e
           mkdir -p final-results
           mapfile -t JTLS < <(find merged-artifacts -type f -name "*.jtl")
           if [ ${#JTLS[@]} -eq 0 ]; then
