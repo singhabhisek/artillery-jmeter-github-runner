@@ -282,15 +282,22 @@ jobs:
           echo "JMETER_HOME=$JMETER_HOME" >> $GITHUB_ENV
           echo "PATH=$JMETER_HOME/bin:$PATH" >> $GITHUB_ENV
   
-      - name: Install JMeter CMDRunner and MergeResults plugin
+      - name: Install Plugin Manager + MergeResults plugin
         run: |
           cd $JMETER_HOME/lib/ext
-          # Download CMDRunner (needed for MergeResults CLI)
-          wget https://jmeter-plugins.org/files/packages/jpgc-cmdrunner-2.3.zip
-          unzip -o jpgc-cmdrunner-2.3.zip
-          # Ensure proper permissions
-          chmod +x CMDRunner.jar
-          cd $GITHUB_WORKSPACE
+  
+          # Download Plugin Manager JAR (official source)
+          wget https://jmeter-plugins.org/get/ -O jmeter-plugins-manager.jar
+  
+          # Install the Plugin Manager command line tool (PluginsCMD)
+          wget https://repo1.maven.org/maven2/kg/apc/jmeter-plugins-cmd/0.6/jmeter-plugins-cmd-0.6.jar -O PluginsCMD.jar
+  
+          cd $JMETER_HOME/bin
+  
+          # Initialize Plugin Manager (downloads required components list)
+          java -cp ../lib/ext/jmeter-plugins-manager.jar org.jmeterplugins.repository.PluginManagerCMD install jpgc-mergeresults
+  
+          echo "Installed MergeResults plugin successfully"
   
       - name: Generate dynamic merge-results.properties
         run: |
@@ -313,10 +320,10 @@ jobs:
           echo "Generated merge-results.properties:"
           cat $PROPERTIES_FILE
   
-      - name: Merge JTL results using MergeResults plugin
+      - name: Merge JTL results
         run: |
-          cd $JMETER_HOME/lib/ext
-          java -Xms512m -Xmx1g -jar CMDRunner.jar --tool Reporter \
+          cd $JMETER_HOME/bin
+          java -jar ../lib/ext/PluginsCMD.jar --tool Reporter \
             --input-jtl $GITHUB_WORKSPACE/merge-results.properties \
             --plugin-type MergeResults \
             --generate-jtl $GITHUB_WORKSPACE/merged.jtl
