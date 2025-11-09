@@ -272,19 +272,31 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl unzip jq
   
-      - name: Install JMeter & Plugins
+      - name: Install JMeter & MergeResults plugin
         run: |
           JMETER_HOME="$HOME/jmeter"
           mkdir -p "$JMETER_HOME"
           curl -sL "https://downloads.apache.org/jmeter/binaries/apache-jmeter-${{ env.JMETER_VERSION }}.tgz" -o jmeter.tgz
           tar -xzf jmeter.tgz -C "$JMETER_HOME" --strip-components=1
           mkdir -p "$JMETER_HOME/lib/ext"
+  
+          # CMDRunner for MergeResults
           curl -L -o "$JMETER_HOME/lib/cmdrunner-2.3.jar" https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.3/cmdrunner-2.3.jar
-          curl -sL https://jmeter-plugins.org/get/ -o "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar"
-          java -cp "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar:$JMETER_HOME/lib/cmdrunner-2.3.jar" \
-               org.jmeterplugins.repository.PluginManagerCMDInstaller || true
-          java -cp "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar:$JMETER_HOME/lib/cmdrunner-2.3.jar" \
-               org.jmeterplugins.repository.PluginManagerCMD install jpgc-mergeresults
+  
+          # Dummy plugin
+          curl -L -o /tmp/jpgc-dummy-0.4.zip https://jmeter-plugins.org/files/packages/jpgc-dummy-0.4.zip
+          unzip -o /tmp/jpgc-dummy-0.4.zip -d /tmp/dummy-plugin
+          find /tmp/dummy-plugin -name "*.jar" -exec cp {} "$JMETER_HOME/lib/ext/" \;
+  
+          # Ultimate Thread Group plugin
+          curl -L -o /tmp/jpgc-ultimate-thread-group-3.0.zip https://jmeter-plugins.org/files/packages/jpgc-casutg-3.1.1.zip
+          unzip -o /tmp/jpgc-ultimate-thread-group-3.0.zip -d /tmp/ultimate-plugin
+          find /tmp/ultimate-plugin -name "*.jar" -exec cp {} "$JMETER_HOME/lib/ext/" \;
+  
+          # MergeResults plugin
+          curl -L -o /tmp/jpgc-mergeresults-3.3.zip https://jmeter-plugins.org/files/packages/jpgc-mergeresults-3.3.zip
+          unzip -o /tmp/jpgc-mergeresults-3.3.zip -d /tmp/mergeresults-plugin
+          find /tmp/mergeresults-plugin -name "*.jar" -exec cp {} "$JMETER_HOME/lib/ext/" \;
   
       - name: Download runner artifacts
         uses: actions/download-artifact@v4
@@ -329,6 +341,7 @@ jobs:
         with:
           name: consolidated-jmeter-results
           path: consolidated-results.zip
+
 
 # =========================================================
 # Job 4: Cleanup old artifacts
