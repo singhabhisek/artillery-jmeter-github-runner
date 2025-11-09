@@ -253,7 +253,7 @@ jobs:
           path: upload/*.zip
 
 # =========================================================
-# Job 3: Aggregate runner JTLs (Debug-Ready & Fixed)
+# Job 3: Aggregate runner JTLs (DEBUGGED)
 # =========================================================
   aggregate-reports:
     needs: run-jmeter
@@ -272,10 +272,11 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl unzip jq
   
-      - name: Install JMeter, CMDRunner & MergeResults plugin
+      - name: Install JMeter & CMDRunner
         run: |
           JMETER_HOME="$HOME/jmeter"
           mkdir -p "$JMETER_HOME"
+  
           echo "📦 Downloading JMeter..."
           curl -sL "https://downloads.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz" -o jmeter.tgz
           tar -xzf jmeter.tgz -C "$JMETER_HOME" --strip-components=1
@@ -285,19 +286,15 @@ jobs:
           curl -L -o "$JMETER_HOME/lib/cmdrunner-2.3.jar" \
             https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.3/cmdrunner-2.3.jar
   
-          echo "🔌 Downloading MergeResults plugin v2.1..."
-          MERGE_ZIP="/tmp/jpgc-mergeresults-2.1.zip"
-          curl -L -o "$MERGE_ZIP" https://jmeter-plugins.org/files/packages/jpgc-mergeresults-2.1.zip
-  
-          echo "📝 Plugin download check:"
-          ls -lh "$MERGE_ZIP"
-          file "$MERGE_ZIP"
-  
-          echo "✅ Extracting MergeResults plugin..."
-          unzip -o "$MERGE_ZIP" -d /tmp/mergeresults-plugin
+          echo "🔌 Installing MergeResults plugin..."
+          curl -L -o /tmp/jpgc-mergeresults-2.1.zip \
+            https://jmeter-plugins.org/files/packages/jpgc-mergeresults-2.1.zip
+          unzip -o /tmp/jpgc-mergeresults-2.1.zip -d /tmp/mergeresults-plugin
           find /tmp/mergeresults-plugin -name "*.jar" -exec cp {} "$JMETER_HOME/lib/ext/" \;
   
-          echo "🔍 lib/ext contents:"
+          echo "✅ JMeter, CMDRunner and MergeResults plugin installed."
+          echo "CMDRunner location: $JMETER_HOME/lib/cmdrunner-2.3.jar"
+          echo "MergeResults JARs in: $JMETER_HOME/lib/ext/"
           ls -lh "$JMETER_HOME/lib/ext/"
   
       - name: Download runner artifacts
@@ -305,23 +302,17 @@ jobs:
         with:
           path: merged-artifacts
   
-      - name: Debug merged-artifacts folder
+      - name: Unzip runner results recursively
         run: |
-          echo "===== Full directory structure ====="
-          find merged-artifacts -type d | sort
-          echo "===== All files ====="
-          find merged-artifacts -type f | sort
-  
-      - name: Unzip all runner results recursively
-        run: |
+          echo "📂 Unzipping runner results..."
           mkdir -p merged-artifacts/unzipped
-          # Recursively unzip all ZIP files, including nested
           find merged-artifacts -type f -name "*.zip" | while read zipfile; do
             echo "Unzipping $zipfile ..."
             unzip -o "$zipfile" -d merged-artifacts/unzipped/
           done
-          echo "===== Unzipped contents ====="
-          find merged-artifacts/unzipped -type f | sort
+  
+          echo "===== Contents of merged-artifacts/unzipped ====="
+          find merged-artifacts/unzipped/ -type f | sort
   
       - name: Aggregate JTL files
         run: |
@@ -346,15 +337,17 @@ jobs:
             echo "input-jtl=$f" >> "$MERGE_PROPS"
           done
           echo "generate-csv=final-results/merged.jtl" >> "$MERGE_PROPS"
+  
           echo "📝 Merge properties file contents:"
           cat "$MERGE_PROPS"
   
           # Merge JTLs using CMDRunner
           echo "⚙️ Merging JTL files..."
-          java -jar "$HOME/jmeter/lib/cmdrunner-2.3.jar" \
+          java -Xms256m -Xmx512m -jar "$HOME/jmeter/lib/cmdrunner-2.3.jar" \
             --tool Reporter \
-            --plugin-type MergeResults \
-            --input-jtl "$MERGE_PROPS"
+            --generate-csv final-results/merged.jtl \
+            --input-jtl "$MERGE_PROPS" \
+            --plugin-type MergeResults
   
           echo "✅ Merged JTL created at final-results/merged.jtl"
   
@@ -362,7 +355,7 @@ jobs:
           REPORT_DIR="final-results/html-report"
           mkdir -p "$REPORT_DIR"
           echo "📊 Generating HTML dashboard..."
-          "$HOME/jmeter/bin/jmeter" -g "final-results/merged.jtl" -o "$REPORT_DIR"
+          "$HOME/jmeter/bin/jmeter" -g final-results/merged.jtl -o "$REPORT_DIR"
           echo "✅ HTML report available at $REPORT_DIR"
   
       - name: Package consolidated artifacts
