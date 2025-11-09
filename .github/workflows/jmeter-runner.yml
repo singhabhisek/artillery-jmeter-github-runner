@@ -9,6 +9,14 @@ on:
       app_name:
         description: "Application name (e.g., App1, App2)"
         required: true
+      jmx_file:
+        description: "Which JMeter test plan to run?"
+        required: false
+        default: "sample_jmeter.jmx"
+        type: choice
+        options:
+          - sample_jmeter.jmx
+          - High_TPS_Runner.jmx
       test_type:
         description: "Choose test type (e.g., load/cleanup)"
         required: true
@@ -174,7 +182,7 @@ jobs:
       # -------------------------------
       - name: Check JMeter test plan exists
         run: |
-          TEST_PLAN="${{ env.SCRIPTS_DIR }}/High_TPS_Runner.jmx"
+          TEST_PLAN="${{ env.SCRIPTS_DIR }}/$APP_NAME/${{ github.event.inputs.jmx_name }}"
           if [ ! -f "$TEST_PLAN" ]; then
             echo "❌ Test plan $TEST_PLAN not found!"
             exit 1
@@ -248,7 +256,7 @@ jobs:
 
           # Run JMeter in non-GUI mode, passing all variables
           jmeter -n \
-            -t "${{ env.SCRIPTS_DIR }}/High_TPS_Runner.jmx" \
+            -t "${{ env.SCRIPTS_DIR }}/$APP_NAME/${{ github.event.inputs.jmx_name }}" \
             -l "$RESULT_DIR/results.jtl" \
             -e -o "$RESULT_DIR/html-report" \
             -j "$RESULT_DIR/jmeter.log" \
