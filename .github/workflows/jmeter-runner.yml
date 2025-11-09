@@ -1,4 +1,4 @@
-name: "JMeter Load Test (Multi-Runner)"
+name: "JMeter Load Test (Multi-Runner)" 
 
 run-name: >
   JMeter Workflow: ${{ github.event.inputs.test_name }}
@@ -58,10 +58,10 @@ on:
           - "false"
 
 env:
-  JMETER_VERSION: "5.6.3"          # Version to install
-  SCRIPTS_DIR: "applications"      # Base directory for application scripts
-  REPORT_DIR: "./reports"          # Base directory for runner results
-  JMETER_HOME: "$HOME/jmeter"      # JMeter installation directory
+  JMETER_VERSION: "5.6.3"
+  SCRIPTS_DIR: "applications"
+  REPORT_DIR: "./reports"
+  JMETER_HOME: "$HOME/jmeter"
 
 # =========================================================
 # Job 1: Determine final test name
@@ -71,6 +71,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       final_test_name: ${{ steps.determine.outputs.final_test_name }}
+
     steps:
       - id: determine
         run: |
@@ -93,27 +94,19 @@ jobs:
       fail-fast: false
       matrix:
         runner_index: [1,2,3,4]
+
     steps:
-      # -------------------------------
-      # Checkout repository
-      # -------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # -------------------------------
-      # Skip unused runners
-      # -------------------------------
       - name: Skip unused runner jobs
         if: ${{ matrix.runner_index > fromJSON(github.event.inputs.runners_to_use) }}
         run: |
           echo "Skipping runner ${{ matrix.runner_index }}"
           exit 0
 
-      # -------------------------------
-      # Print machine info if requested
-      # -------------------------------
       - name: Print machine details
         if: ${{ github.event.inputs.print_machine_info == 'true' }}
         run: |
@@ -124,17 +117,11 @@ jobs:
           curl -s https://ipapi.co/json/
           echo "========================"
 
-      # -------------------------------
-      # Load app-specific environment variables (.env)
-      # -------------------------------
       - name: Load environment variables
         shell: bash
         run: |
           APP_NAME="${{ github.event.inputs.app_name }}"
-          echo "ℹ️ Running test for app: $APP_NAME"
-
-          # Path to app-specific .env file
-          ENV_FILE="${SCRIPTS_DIR}/${APP_NAME}/.env"
+          ENV_FILE="./applications/$APP_NAME/.env"
 
           if [ -f "$ENV_FILE" ]; then
             echo "✅ Loading environment variables from $ENV_FILE"
@@ -144,12 +131,11 @@ jobs:
                 varname=$(echo "$line" | cut -d '=' -f 1)
                 value=$(echo "$line" | cut -d '=' -f 2-)
                 export "$varname=$value"
-                echo "   Loaded $varname"
               fi
             done
             set +o allexport
           else
-            echo "⚠️ .env file not found for $APP_NAME, using defaults/empty values"
+            echo "⚠️ .env file not found. Using default/empty values."
             export DURATION="${DURATION:-}"
             export THREADS="${THREADS:-}"
             export RAMPUP="${RAMPUP:-}"
@@ -159,7 +145,6 @@ jobs:
             export AWS_SECRET_KEY="${AWS_SECRET_KEY:-}"
           fi
 
-          # Export variables for GitHub Actions downstream steps
           echo "DURATION=$DURATION" >> $GITHUB_ENV
           echo "THREADS=$THREADS" >> $GITHUB_ENV
           echo "RAMPUP=$RAMPUP" >> $GITHUB_ENV
@@ -169,63 +154,47 @@ jobs:
           echo "AWS_SECRET_KEY=$AWS_SECRET_KEY" >> $GITHUB_ENV
           echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
 
-      # -------------------------------
-      # Check JMeter test plan exists
-      # -------------------------------
       - name: Check JMeter test plan exists
         run: |
-          TEST_PLAN="${SCRIPTS_DIR}/${APP_NAME}/scripts/${{ github.event.inputs.jmx_file }}"
+          TEST_PLAN="${{ env.SCRIPTS_DIR }}/$APP_NAME/scripts/${{ github.event.inputs.jmx_file }}"
           if [ ! -f "$TEST_PLAN" ]; then
             echo "❌ Test plan $TEST_PLAN not found!"
             exit 1
           fi
-          echo "✅ Test plan exists: $TEST_PLAN"
+          echo "✅ Test plan found: $TEST_PLAN"
 
-      # -------------------------------
-      # Install JMeter if missing
-      # -------------------------------
-      - name: Install JMeter
+      - name: Install JMeter & Plugins
+        shell: bash
         run: |
+          # Install JMeter only if not exists
           if [ ! -d "$HOME/jmeter" ]; then
             echo "ℹ️ Installing JMeter..."
             mkdir -p $HOME/jmeter
             curl -L https://downloads.apache.org/jmeter/binaries/apache-jmeter-${{ env.JMETER_VERSION }}.tgz -o jmeter.tgz
-            tar -xzf jmeter.tgz
-            mv apache-jmeter-${{ env.JMETER_VERSION }} $HOME/jmeter
-            echo "$HOME/jmeter/bin" >> $GITHUB_PATH
-            echo "✅ JMeter installed"
+            tar -xzf jmeter.tgz -C $HOME/jmeter --strip-components=1
           else
             echo "ℹ️ JMeter already installed, skipping download."
           fi
 
-      # -------------------------------
-      # Install required plugins
-      # -------------------------------
-      - name: Install JMeter Plugins
-        run: |
           mkdir -p $HOME/jmeter/lib/ext
-          # Dummy plugin
+
+          # Download and install plugin jars
           curl -L -o /tmp/jpgc-dummy-0.4.zip https://jmeter-plugins.org/files/packages/jpgc-dummy-0.4.zip
           unzip -o /tmp/jpgc-dummy-0.4.zip -d /tmp/dummy-plugin
           find /tmp/dummy-plugin -name "*.jar" -exec cp {} $HOME/jmeter/lib/ext/ \;
 
-          # Ultimate Thread Group
           curl -L -o /tmp/jpgc-ultimate-thread-group-3.0.zip https://jmeter-plugins.org/files/packages/jpgc-casutg-3.1.1.zip
           unzip -o /tmp/jpgc-ultimate-thread-group-3.0.zip -d /tmp/ultimate-plugin
           find /tmp/ultimate-plugin -name "*.jar" -exec cp {} $HOME/jmeter/lib/ext/ \;
 
-          # CMDRunner 2.3 (match MergeResults)
           curl -L -o $HOME/jmeter/lib/cmdrunner-2.3.jar https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.3/cmdrunner-2.3.jar
-
-          # Plugins Manager + MergeResults
           curl -sL https://jmeter-plugins.org/get/ -o $HOME/jmeter/lib/ext/jmeter-plugins-manager.jar
-          chmod +x $HOME/jmeter/bin/PluginsManagerCMD.sh
+
+          # Install official Plugins Manager script
           java -cp $HOME/jmeter/lib/ext/jmeter-plugins-manager.jar org.jmeterplugins.repository.PluginManagerCMDInstaller || true
+          chmod +x $HOME/jmeter/bin/PluginsManagerCMD.sh
           $HOME/jmeter/bin/PluginsManagerCMD.sh install jpgc-mergeresults
 
-      # -------------------------------
-      # Optional system monitoring
-      # -------------------------------
       - name: Start system monitoring (optional)
         if: ${{ github.event.inputs.monitor_system == 'true' }}
         run: |
@@ -244,9 +213,6 @@ jobs:
           monitor &
           echo $! > /tmp/monitor_pid.txt
 
-      # -------------------------------
-      # Run JMeter Test
-      # -------------------------------
       - name: Run JMeter Test
         id: run_test
         run: |
@@ -255,9 +221,8 @@ jobs:
           RESULT_DIR="${{ env.REPORT_DIR }}/${TEST_NAME}-runner-${{ matrix.runner_index }}-$TIMESTAMP"
           mkdir -p "$RESULT_DIR"
 
-          # Execute JMeter passing variables and unique log names
           $HOME/jmeter/bin/jmeter -n \
-            -t "${SCRIPTS_DIR}/${APP_NAME}/scripts/${{ github.event.inputs.jmx_file }}" \
+            -t "${{ env.SCRIPTS_DIR }}/$APP_NAME/scripts/${{ github.event.inputs.jmx_file }}" \
             -l "$RESULT_DIR/results-runner-${{ matrix.runner_index }}.jtl" \
             -e -o "$RESULT_DIR/html-report" \
             -j "$RESULT_DIR/jmeter-runner-${{ matrix.runner_index }}.log" \
@@ -273,9 +238,6 @@ jobs:
 
           echo "result_dir=$RESULT_DIR" >> $GITHUB_OUTPUT
 
-      # -------------------------------
-      # Stop system monitoring
-      # -------------------------------
       - name: Stop system monitoring
         if: ${{ github.event.inputs.monitor_system == 'true' }}
         run: |
@@ -284,15 +246,11 @@ jobs:
             rm /tmp/monitor_pid.txt
           fi
 
-      # -------------------------------
-      # Package runner artifacts
-      # -------------------------------
       - name: Package Runner Artifacts
         run: |
           ZIP_NAME="runner-${{ matrix.runner_index }}-results.zip"
           mkdir -p upload
           zip -r "upload/$ZIP_NAME" "${{ steps.run_test.outputs.result_dir }}"
-          echo "Packaged runner ZIP: upload/$ZIP_NAME"
 
       - name: Upload Runner Artifact
         uses: actions/upload-artifact@v4
@@ -301,5 +259,92 @@ jobs:
           path: upload/*.zip
 
 # =========================================================
-# Aggregate & cleanup jobs can be added similarly...
+# Job 3: Aggregate reports
 # =========================================================
+  aggregate-reports:
+    needs: run-jmeter
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.test_type == 'load' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y curl unzip jq
+
+      - name: Install JMeter & MergeResults
+        run: |
+          JMETER_HOME="$HOME/jmeter"
+          mkdir -p $JMETER_HOME
+          curl -sL "https://downloads.apache.org/jmeter/binaries/apache-jmeter-${{ env.JMETER_VERSION }}.tgz" -o jmeter.tgz
+          tar -xzf jmeter.tgz -C $JMETER_HOME --strip-components=1
+          mkdir -p $JMETER_HOME/lib/ext
+          curl -sL https://jmeter-plugins.org/get/ -o $JMETER_HOME/lib/ext/jmeter-plugins-manager.jar
+          curl -sL https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.3/cmdrunner-2.3.jar -o $JMETER_HOME/lib/cmdrunner-2.3.jar
+          java -cp $JMETER_HOME/lib/ext/jmeter-plugins-manager.jar org.jmeterplugins.repository.PluginManagerCMDInstaller || true
+          chmod +x $JMETER_HOME/bin/PluginsManagerCMD.sh
+          $JMETER_HOME/bin/PluginsManagerCMD.sh install jpgc-mergeresults
+
+      - name: Download runner artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: merged-artifacts
+
+      - name: Merge multiple JTLs
+        shell: bash
+        run: |
+          mkdir -p final-results
+          mapfile -t JTLS < <(find merged-artifacts -type f -name "*.jtl")
+          if [ ${#JTLS[@]} -eq 0 ]; then
+            echo "❌ No JTL files found."
+            exit 1
+          fi
+          CMD_JAR="$HOME/jmeter/lib/cmdrunner-2.3.jar"
+          MERGED_JTL="final-results/merged.jtl"
+          JAVA_CMD="java -jar \"$CMD_JAR\" --tool Reporter --plugin-type MergeResults"
+          for f in "${JTLS[@]}"; do
+            JAVA_CMD="$JAVA_CMD --input-jtl \"$f\""
+          done
+          JAVA_CMD="$JAVA_CMD --generate-csv \"$MERGED_JTL\""
+          eval "$JAVA_CMD"
+          echo "✅ Merged JTL created: $MERGED_JTL"
+
+      - name: Generate HTML Dashboard
+        shell: bash
+        run: |
+          MERGED_JTL="final-results/merged.jtl"
+          REPORT_DIR="final-results/html-report"
+          mkdir -p "$REPORT_DIR"
+          $HOME/jmeter/bin/jmeter -g "$MERGED_JTL" -o "$REPORT_DIR"
+          echo "✅ HTML report generated at $REPORT_DIR"
+
+      - name: Package consolidated artifacts
+        run: |
+          mkdir -p final-upload
+          cp merged-artifacts/**/*.zip final-upload/ || true
+          cp -r final-results final-upload/final-results || true
+          zip -r "consolidated-results.zip" final-upload/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: consolidated-jmeter-results
+          path: consolidated-results.zip
+
+# =========================================================
+# Job 4: Cleanup old artifacts
+# =========================================================
+  cleanup-artifacts:
+    if: ${{ github.event.inputs.test_type == 'cleanup' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup old runner results
+        run: |
+          find ${{ env.REPORT_DIR }} -maxdepth 1 -type d -name "*-runner-*" -mtime +${{ github.event.inputs.cleanup_days }} -exec rm -rf {} +
+      - name: Cleanup old consolidated results
+        run: |
+          find consolidated -maxdepth 1 -type d -mtime +${{ github.event.inputs.cleanup_days }} -exec rm -rf {} + || true
