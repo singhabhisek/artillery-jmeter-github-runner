@@ -301,7 +301,14 @@ jobs:
         shell: bash
         run: |
           mkdir -p final-results
-          mapfile -t JTLS < <(find merged-artifacts -type f -name "*.jtl")
+
+          # Unzip all runner ZIPs into a temp directory
+          for zipfile in merged-artifacts/*.zip; do
+            unzip -o "$zipfile" -d merged-artifacts/unzipped/
+          done
+          
+          # Find all JTL files inside the unzipped directories
+          mapfile -t JTLS < <(find merged-artifacts/unzipped/ -type f -name "*.jtl")
           if [ ${#JTLS[@]} -eq 0 ]; then
             echo "❌ No JTL files found."
             exit 1
