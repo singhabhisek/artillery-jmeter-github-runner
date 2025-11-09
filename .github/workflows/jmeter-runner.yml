@@ -146,7 +146,7 @@ jobs:
 
       - name: Check JMeter test plan exists
         run: |
-          TEST_PLAN="${{ env.SCRIPTS_DIR }}/$APP_NAME/${{ github.event.inputs.jmx_file }}"
+          TEST_PLAN="${{ env.SCRIPTS_DIR }}/$APP_NAME/scripts/${{ github.event.inputs.jmx_file }}"
           if [ ! -f "$TEST_PLAN" ]; then
             echo "❌ Test plan $TEST_PLAN not found!"
             exit 1
@@ -184,7 +184,7 @@ jobs:
           "$JMETER_HOME/bin/PluginsManagerCMD.sh" install jpgc-mergeresults
 
       - name: Optional system monitoring
-        if: ${{ github.event.inputs.monitor_system == 'true' }}
+        if: ${{ github.event.inputs.monitor_system == 'true' && matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         run: |
           mkdir -p "${{ env.REPORT_DIR }}"
           LOG_FILE="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-system.log"
@@ -203,6 +203,7 @@ jobs:
 
       - name: Run JMeter Test
         id: run_test
+        if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         run: |
           TEST_NAME="${{ needs.set-test-name.outputs.final_test_name }}"
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
@@ -210,7 +211,7 @@ jobs:
           mkdir -p "$RESULT_DIR"
 
           "$HOME/jmeter/bin/jmeter" -n \
-            -t "${{ env.SCRIPTS_DIR }}/$APP_NAME/${{ github.event.inputs.jmx_file }}" \
+            -t "${{ env.SCRIPTS_DIR }}/$APP_NAME/scripts/${{ github.event.inputs.jmx_file }}" \
             -l "$RESULT_DIR/results-runner-${{ matrix.runner_index }}.jtl" \
             -e -o "$RESULT_DIR/html-report" \
             -j "$RESULT_DIR/jmeter-runner-${{ matrix.runner_index }}.log" \
@@ -227,7 +228,7 @@ jobs:
           echo "result_dir=$RESULT_DIR" >> $GITHUB_OUTPUT
 
       - name: Stop system monitoring
-        if: ${{ github.event.inputs.monitor_system == 'true' }}
+        if: ${{ github.event.inputs.monitor_system == 'true' && matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use)}}
         run: |
           if [ -f /tmp/monitor_pid.txt ]; then
             kill $(cat /tmp/monitor_pid.txt) || true
