@@ -270,20 +270,20 @@ jobs:
         with:
           path: artifacts
 
-      - name: Install JMeter + MergeResults plugin
+      - name: Install PluginsManager + CMDRunner + MergeResults
         run: |
-          sudo apt-get update && sudo apt-get install -y curl unzip openjdk-11-jre-headless
-          mkdir -p "$JMETER_HOME"
-          curl -sL "https://downloads.apache.org/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz" -o jmeter.tgz
-          tar -xzf jmeter.tgz -C "$JMETER_HOME" --strip-components=1
-          mkdir -p "$JMETER_HOME/lib/ext"
+          set -e
+          mkdir -p $JMETER_HOME/lib/ext
+          curl -sL https://jmeter-plugins.org/get/ -o $JMETER_HOME/lib/ext/jmeter-plugins-manager.jar
+          curl -sL https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.2.1/cmdrunner-2.2.1.jar -o $JMETER_HOME/lib/cmdrunner-2.2.1.jar
 
-          curl -sL https://jmeter-plugins.org/get/ -o "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar"
-          curl -sL https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.2.1/cmdrunner-2.2.1.jar -o "$JMETER_HOME/lib/cmdrunner-2.2.1.jar"
-          java -cp "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar" org.jmeterplugins.repository.PluginManagerCMDInstaller || true
-          chmod +x "$JMETER_HOME/bin/PluginsManagerCMD.sh" || true
-          "$JMETER_HOME/bin/PluginsManagerCMD.sh" install jpgc-mergeresults
-          echo "✅ MergeResults plugin ready"
+          # Fix for PluginsManagerCMD.sh expecting cmdrunner-2.3.jar
+          ln -sf "$JMETER_HOME/lib/cmdrunner-2.2.1.jar" "$JMETER_HOME/lib/cmdrunner-2.3.jar"
+
+          java -cp $JMETER_HOME/lib/ext/jmeter-plugins-manager.jar org.jmeterplugins.repository.PluginManagerCMDInstaller || true
+          chmod +x $JMETER_HOME/bin/PluginsManagerCMD.sh || true
+          $JMETER_HOME/bin/PluginsManagerCMD.sh install jpgc-mergeresults
+          echo "✅ MergeResults plugin installed successfully"
 
       - name: Generate dynamic merge-results.properties
         run: |
