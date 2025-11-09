@@ -302,31 +302,14 @@ jobs:
         run: |
           mkdir -p final-results
       
-          # Check downloaded ZIPs
-          echo "===== ZIP files in merged-artifacts ====="
+          # List downloaded runner directories
+          echo "===== Runner directories in merged-artifacts ====="
           ls -lh merged-artifacts || true
       
-          ZIP_COUNT=$(ls merged-artifacts/*.zip 2>/dev/null | wc -l)
-          if [ "$ZIP_COUNT" -eq 0 ]; then
-            echo "❌ No ZIP files found in merged-artifacts!"
-            exit 1
-          fi
-      
-          # Unzip all runner ZIPs into a temporary folder
-          mkdir -p merged-artifacts/unzipped
-          for zipfile in merged-artifacts/*.zip; do
-            echo "Unzipping $zipfile ..."
-            unzip -o "$zipfile" -d merged-artifacts/unzipped/
-          done
-      
-          # List the contents of the unzipped folder
-          echo "===== Contents of merged-artifacts/unzipped ====="
-          find merged-artifacts/unzipped/ -type f | sort
-      
-          # Find all JTL files inside the unzipped directories
-          mapfile -t JTLS < <(find merged-artifacts/unzipped/ -type f -name "*.jtl")
+          # Find all JTL files inside runner directories
+          mapfile -t JTLS < <(find merged-artifacts -type f -name "*.jtl")
           if [ ${#JTLS[@]} -eq 0 ]; then
-            echo "❌ No JTL files found in unzipped artifacts."
+            echo "❌ No JTL files found inside runner directories."
             exit 1
           fi
       
@@ -347,6 +330,7 @@ jobs:
           JAVA_CMD="$JAVA_CMD --generate-csv \"$MERGED_JTL\""
           eval "$JAVA_CMD"
           echo "✅ Merged JTL created: $MERGED_JTL"
+    
       - name: Generate HTML Dashboard
         run: |
           MERGED_JTL="final-results/merged.jtl"
