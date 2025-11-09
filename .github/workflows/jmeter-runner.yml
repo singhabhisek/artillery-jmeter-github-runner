@@ -263,9 +263,85 @@ jobs:
 # - Attempts MergeResults (preferred) and falls back to concatenation merge
 # - Generates HTML report from merged JTL (if present)
 # - Uploads final-results/ as artifact
-# =========================================================
+# # =========================================================
+#   aggregate-results:
+#     if: ${{ github.event.inputs.test_type == 'load' && fromJSON(github.event.inputs.runners_to_use) > 1 }}
+#     name: Aggregate JMeter Results
+#     needs: run-jmeter
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
+  
+#       - name: Setup Java 17
+#         uses: actions/setup-java@v4
+#         with:
+#           distribution: temurin
+#           java-version: '17'
+  
+#       - name: Install OS dependencies
+#         run: sudo apt-get update && sudo apt-get install -y curl unzip
+  
+#       - name: Install JMeter
+#         run: |
+#           set -e
+#           JMETER_VERSION=5.6.3
+#           curl -sL "https://downloads.apache.org/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz" -o jmeter.tgz
+#           tar -xzf jmeter.tgz
+#           mv "apache-jmeter-${JMETER_VERSION}" "$HOME/jmeter"
+#           echo "$HOME/jmeter/bin" >> $GITHUB_PATH
+  
+#       - name: Download runner artifacts
+#         uses: actions/download-artifact@v4
+#         with:
+#           path: merged-results
+  
+#       - name: Unzip runner results
+#         run: |
+#           mkdir -p merged-results/unzipped
+#           find merged-results -type f -name "*.zip" -exec unzip -o {} -d merged-results/unzipped/ \;
+  
+#       - name: Concatenate JTL files
+#         run: |
+#           mkdir -p final-results
+#           SEARCH_PATHS=("merged-results/unzipped" "merged-results")
+#           JTLS=()
+#           for p in "${SEARCH_PATHS[@]}"; do
+#             if [ -d "$p" ]; then
+#               while IFS= read -r -d $'\0' f; do
+#                 JTLS+=("$f")
+#               done < <(find "$p" -type f -name "*.jtl" -print0)
+#             fi
+#           done
+  
+#           if [ ${#JTLS[@]} -eq 0 ]; then
+#             echo "❌ No JTL files found!"
+#             exit 1
+#           fi
+  
+#           FIRST="${JTLS[0]}"
+#           head -n 1 "$FIRST" > final-results/merged.jtl
+#           for f in "${JTLS[@]}"; do
+#             tail -n +2 "$f" >> final-results/merged.jtl
+#           done
+#           echo "✅ Merged JTL created at final-results/merged.jtl"
+  
+#       - name: Generate HTML report
+#         run: |
+#           MERGED_JTL="final-results/merged.jtl"
+#           REPORT_DIR="final-results/merged-report"
+#           if [ -f "$MERGED_JTL" ]; then
+#             "$HOME/jmeter/bin/jmeter" -g "$MERGED_JTL" -o "$REPORT_DIR" || echo "⚠️ Report generation failed"
+#           fi
+  
+#       - name: Upload final artifact
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: consolidated-jmeter-results
+#           path: final-results
+#           retention-days: ${{ github.event.inputs.cleanup_days }}
   aggregate-results:
-    if: ${{ github.event.inputs.test_type == 'load' }}
+    if: ${{ github.event.inputs.test_type == 'load' && fromJSON(github.event.inputs.runners_to_use) > 1 }}
     name: Aggregate JMeter Results
     needs: run-jmeter                     # <- adjust if your test job has a different name
     runs-on: ubuntu-latest
@@ -535,56 +611,40 @@ jobs:
 # =========================================================
 # Job 4: Cleanup old artifacts
 # =========================================================
+# =========================================================
+# Job 4: Cleanup old artifacts (safe, repo-only)
+# =========================================================
   cleanup-artifacts:
     if: ${{ github.event.inputs.test_type == 'cleanup' }}
     runs-on: ubuntu-latest
     steps:
-      # 1) Cleanup local runner result directories older than X days
-      - name: Cleanup old runner results
+      - name: Install GitHub CLI
         run: |
-          echo "🧹 Cleaning local runner result directories older than ${{ github.event.inputs.cleanup_days }} days..."
+          sudo apt-get update
+          sudo apt-get install -y gh
+  
+      - name: Authenticate GitHub CLI
+        run: gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
+  
+      - name: Cleanup old runner result directories
+        run: |
+          echo "🧹 Cleaning local runner report directories older than ${{ github.event.inputs.cleanup_days }} days..."
           if [ -d "${{ env.REPORT_DIR }}" ]; then
-            find "${{ env.REPORT_DIR }}" -maxdepth 1 -type d -name "*-runner-*" -mtime +${{ github.event.inputs.cleanup_days }} -exec rm -rf {} +
-            echo "✅ Old runner directories deleted."
+            find ${{ env.REPORT_DIR }} -maxdepth 1 -type d -name "*-runner-*" -mtime +${{ github.event.inputs.cleanup_days }} -exec rm -rf {} +
+            echo "✅ Old local runner directories deleted."
           else
-            echo "ℹ️ ${REPORT_DIR} not found; skipping local cleanup."
+            echo "ℹ️ Local report directory not found; skipping local cleanup."
           fi
   
-      # 2) Cleanup old consolidated result directories older than X days
-      - name: Cleanup old consolidated results
-        run: |
-          echo "🧹 Cleaning local consolidated directories older than ${{ github.event.inputs.cleanup_days }} days..."
-          if [ -d "consolidated" ]; then
-            find consolidated -maxdepth 1 -type d -mtime +${{ github.event.inputs.cleanup_days }} -exec rm -rf {} +
-            echo "✅ Old consolidated directories deleted."
-          else
-            echo "ℹ️ No consolidated directory found; skipping."
-          fi
-  
-      # 3) Cleanup GitHub Actions artifacts older than X days
       - name: Cleanup old GitHub Actions artifacts
-        uses: octokit/request-action@v5
-        with:
-          route: GET /repos/${{ github.repository }}/actions/artifacts
-        id: list_artifacts
-  
-      - name: Delete old artifacts
         run: |
-          echo "🧹 Deleting GitHub artifacts older than ${{ github.event.inputs.cleanup_days }} days..."
-          cutoff=$(date -d "-${{ github.event.inputs.cleanup_days }} days" --utc +%Y-%m-%dT%H:%M:%SZ)
-          artifacts=$(echo "${{ steps.list_artifacts.outputs.data }}" | jq -r '.artifacts[] | @base64')
-          for a in $artifacts; do
-            _jq() {
-              echo "$a" | base64 --decode | jq -r "$1"
-            }
-            created=$(_jq '.created_at')
-            id=$(_jq '.id')
-            if [[ "$created" < "$cutoff" ]]; then
-              echo "Deleting artifact id=$id created=$created"
-              curl -s -X DELETE \
-                -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-                -H "Accept: application/vnd.github+json" \
-                "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$id"
-            fi
-          done
-          echo "✅ Old GitHub Actions artifacts cleanup complete."
+          echo "🧹 Cleaning GitHub Actions artifacts older than ${{ github.event.inputs.cleanup_days }} days..."
+          gh api repos/${{ github.repository }}/actions/artifacts \
+            --paginate \
+            --jq ".artifacts[] | select((now - (.created_at | fromdate)) / 86400 > ${{ github.event.inputs.cleanup_days }}) | .id" \
+            | while read artifact_id; do
+                echo "Deleting artifact ID: $artifact_id"
+                gh api -X DELETE repos/${{ github.repository }}/actions/artifacts/$artifact_id
+              done
+          echo "✅ GitHub Actions artifacts cleanup complete."
+
