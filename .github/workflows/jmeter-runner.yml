@@ -258,80 +258,61 @@ jobs:
   merge-jtl:
     runs-on: ubuntu-latest
     needs: run-jmeter
-  
     env:
       JMETER_VERSION: "5.6.3"
-      JMETER_HOME: "${{ github.workspace }}/apache-jmeter"
-  
+      JMETER_HOME: "$HOME/jmeter"
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-  
-      - name: Download all JTL artifacts
+      - uses: actions/checkout@v4
+
+      - name: Download runner artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts/jtls
-  
-      - name: Install dependencies
+          path: artifacts
+
+      - name: Install JMeter + MergeResults plugin
         run: |
-          sudo apt-get update && sudo apt-get install -y curl unzip jq openjdk-11-jre-headless
-  
-      - name: Install JMeter
-        run: |
-          set -e
-          mkdir -p $JMETER_HOME
+          sudo apt-get update && sudo apt-get install -y curl unzip openjdk-11-jre-headless
+          mkdir -p "$JMETER_HOME"
           curl -sL "https://downloads.apache.org/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz" -o jmeter.tgz
-          tar -xzf jmeter.tgz -C $JMETER_HOME --strip-components=1
-          echo "Installed Apache JMeter ${JMETER_VERSION}"
-  
-      - name: Install PluginsManager + CMDRunner + MergeResults
-        run: |
-          set -e
-          mkdir -p $JMETER_HOME/lib/ext
-          curl -sL https://jmeter-plugins.org/get/ -o $JMETER_HOME/lib/ext/jmeter-plugins-manager.jar
-          curl -sL https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.2.1/cmdrunner-2.2.1.jar -o $JMETER_HOME/lib/cmdrunner-2.2.1.jar
-          java -cp $JMETER_HOME/lib/ext/jmeter-plugins-manager.jar org.jmeterplugins.repository.PluginManagerCMDInstaller || true
-          chmod +x $JMETER_HOME/bin/PluginsManagerCMD.sh || true
-          $JMETER_HOME/bin/PluginsManagerCMD.sh install jpgc-mergeresults
-          echo "✅ MergeResults plugin installed successfully"
-  
+          tar -xzf jmeter.tgz -C "$JMETER_HOME" --strip-components=1
+          mkdir -p "$JMETER_HOME/lib/ext"
+
+          curl -sL https://jmeter-plugins.org/get/ -o "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar"
+          curl -sL https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.2.1/cmdrunner-2.2.1.jar -o "$JMETER_HOME/lib/cmdrunner-2.2.1.jar"
+          java -cp "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar" org.jmeterplugins.repository.PluginManagerCMDInstaller || true
+          chmod +x "$JMETER_HOME/bin/PluginsManagerCMD.sh" || true
+          "$JMETER_HOME/bin/PluginsManagerCMD.sh" install jpgc-mergeresults
+          echo "✅ MergeResults plugin ready"
+
       - name: Generate dynamic merge-results.properties
         run: |
           PROPERTIES_FILE=merge-results.properties
           echo "" > $PROPERTIES_FILE
           i=1
-          for jtl_file in $(find artifacts/jtls -type f -name "*.jtl"); do
-            echo "inputJtl$i=$jtl_file" >> $PROPERTIES_FILE
+          find artifacts -type f -name "*.jtl" | while read -r jtl; do
+            echo "inputJtl$i=$jtl" >> $PROPERTIES_FILE
             echo "prefixLabel$i=RUNNER$i:" >> $PROPERTIES_FILE
-            echo "includeLabels$i=.*" >> $PROPERTIES_FILE
-            echo "excludeLabels$i=" >> $PROPERTIES_FILE
-            echo "includeLabelRegex$i=true" >> $PROPERTIES_FILE
-            echo "excludeLabelRegex$i=" >> $PROPERTIES_FILE
-            echo "startOffset$i=" >> $PROPERTIES_FILE
-            echo "endOffset$i=" >> $PROPERTIES_FILE
-            echo "" >> $PROPERTIES_FILE
             i=$((i+1))
           done
-  
-          echo "Generated merge-results.properties:"
+          echo "✅ Generated $PROPERTIES_FILE"
           cat $PROPERTIES_FILE
-  
-      - name: Merge JTL results using MergeResults plugin
+
+      - name: Merge JTL files
         run: |
-          cd $JMETER_HOME/bin
+          cd "$JMETER_HOME/bin"
           java -cp "../lib/ext/jmeter-plugins-manager.jar:../lib/cmdrunner-2.2.1.jar:../lib/ext/*" \
             org.jmeterplugins.cmd.CmdTool \
             --tool Reporter \
-            --input-jtl $GITHUB_WORKSPACE/merge-results.properties \
+            --input-jtl "$GITHUB_WORKSPACE/merge-results.properties" \
             --plugin-type MergeResults \
-            --generate-jtl $GITHUB_WORKSPACE/merged.jtl
-          echo "✅ Merged JTL generated successfully"
-  
-      - name: Upload merged JTL
-        uses: actions/upload-artifact@v4
+            --generate-jtl "$GITHUB_WORKSPACE/merged-results.jtl"
+          echo "✅ Merged JTL ready at merged-results.jtl"
+
+      - uses: actions/upload-artifact@v4
         with:
           name: merged-jtl
-          path: merged.jtl
+          path: merged-results.jtl
 
 # =========================================================
 # Job 4: Cleanup old artifacts
