@@ -3,6 +3,10 @@ name: "JMeter Load Test (Multi-Runner)"
 run-name: >
   JMeter Workflow: ${{ github.event.inputs.test_name }}
 
+permissions:
+  actions: write
+  contents: read
+  
 on:
   workflow_dispatch:
     inputs:
