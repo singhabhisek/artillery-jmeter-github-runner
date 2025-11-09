@@ -9,7 +9,7 @@ on:
       app_name:
         description: "Application name (e.g., App1, App2)"
         required: true
-      jmx_file:
+      jmx_name:
         description: "Which JMeter test plan to run?"
         required: false
         default: "sample_jmeter.jmx"
