@@ -1,0 +1,52 @@
+# This is the application-specific workflow that calls the framework.
+# It defines the fixed configuration for 'app1' running in 'dev'.
+name: "App1 - Dev Load Test"
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: "Choose test type (load/cleanup)"
+        required: true
+        type: choice
+        options:
+          - load
+          - cleanup
+      runners_to_use:
+        description: "Number of parallel runners to use (1-4)"
+        required: true
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+        default: '2'
+      test_name:
+        description: "Optional test name override"
+        required: false
+        default: ""
+
+jobs:
+  run-app-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call the JMeter Framework
+        uses: ./.github/workflows/core-jmeter-framework.yml
+        with:
+          # --- FIXED APPLICATION CONFIGURATION ---
+          app_name: "app1"
+          environment_name: "dev"
+          jmx_file: "scripts/High_TPS_Runner.jmx" # The JMX file path relative to applications/app1/
+
+          # --- DYNAMIC USER INPUTS ---
+          test_type: ${{ github.event.inputs.test_type }}
+          runners_to_use: ${{ github.event.inputs.runners_to_use }}
+          test_name: ${{ github.event.inputs.test_name }}
+          monitor_system: false
+          print_machine_info: false
+        
+        # --- SECRETS MAPPING ---
+        # Map the specific secret (e.g., DEV_APP1_API_KEY) to the generic name in the reusable workflow (API_SECRET_KEY)
+        secrets:
+          API_SECRET_KEY: ${{ secrets.DEV_APP1_API_KEY }}
