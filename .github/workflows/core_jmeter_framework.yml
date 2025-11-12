@@ -4,20 +4,38 @@ on:
   workflow_call:
     inputs:
       app_name:
-        required: true
         type: string
+        required: true
       environment_name:
-        required: true
         type: string
+        required: true
       jmx_file:
-        required: true
         type: string
+        required: true
       test_type:
-        required: true
         type: string
+        required: true
       runners_to_use:
-        required: true
         type: string
+        required: true
+
+      # Optional app-specific variables
+      DURATION:
+        type: string
+        required: false
+      THREADS:
+        type: string
+        required: false
+      RAMPUP:
+        type: string
+        required: false
+      AUTH_HEADER:
+        type: string
+        required: false
+      API_KEY:
+        type: string
+        required: false
+
     secrets:
       AWS_ACCESS_KEY:
         required: false
@@ -52,6 +70,7 @@ jobs:
       fail-fast: false
       matrix:
         runner_index: [1,2,3,4]
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -62,30 +81,22 @@ jobs:
           echo "Skipping runner ${{ matrix.runner_index }}"
           exit 0
 
-      - name: Load app-specific environment variables
+      - name: Export optional app variables
         shell: bash
         run: |
-          APP="${{ github.event.inputs.app_name }}"
-          ENV="${{ github.event.inputs.environment_name }}"
-          JMX_FILE="${{ github.event.inputs.jmx_file }}"
+          # Optional inputs
+          [ -n "${{ inputs.DURATION }}" ] && export DURATION="${{ inputs.DURATION }}"
+          [ -n "${{ inputs.THREADS }}" ] && export THREADS="${{ inputs.THREADS }}"
+          [ -n "${{ inputs.RAMPUP }}" ] && export RAMPUP="${{ inputs.RAMPUP }}"
+          [ -n "${{ inputs.AUTH_HEADER }}" ] && export AUTH_HEADER="${{ inputs.AUTH_HEADER }}"
+          [ -n "${{ inputs.API_KEY }}" ] && export API_KEY="${{ inputs.API_KEY }}"
 
-          # Load .env if exists
-          ENV_FILE="applications/$APP/.env"
-          if [ -f "$ENV_FILE" ]; then
-            set -o allexport
-            grep -v '^#' "$ENV_FILE" | grep -v '^\s*$' | while read -r line; do
-              varname=$(echo "$line" | cut -d '=' -f1)
-              value=$(echo "$line" | cut -d '=' -f2-)
-              export "$varname=$value"
-            done
-            set +o allexport
-          fi
+          # Optional secrets
+          [ -n "${{ secrets.AWS_ACCESS_KEY }}" ] && export AWS_ACCESS_KEY="${{ secrets.AWS_ACCESS_KEY }}"
+          [ -n "${{ secrets.AWS_SECRET_KEY }}" ] && export AWS_SECRET_KEY="${{ secrets.AWS_SECRET_KEY }}"
 
-          # AWS secrets are already injected by dispatcher
-          echo "AWS_ACCESS_KEY=$AWS_ACCESS_KEY" >> $GITHUB_ENV
-          echo "AWS_SECRET_KEY=$AWS_SECRET_KEY" >> $GITHUB_ENV
-          echo "APP_NAME=$APP" >> $GITHUB_ENV
-          echo "JMX_FILE=$JMX_FILE" >> $GITHUB_ENV
+          export APP_NAME="${{ inputs.app_name }}"
+          export JMX_FILE="${{ inputs.jmx_file }}"
 
       - name: Validate JMeter test plan exists
         run: |
@@ -105,20 +116,22 @@ jobs:
           fi
 
       - name: Run JMeter Test
+        shell: bash
         run: |
           TEST_NAME="${{ needs.set-test-name.outputs.final_test_name }}"
           RESULT_DIR="${{ env.REPORT_DIR }}/$TEST_NAME-runner-${{ matrix.runner_index }}"
           mkdir -p "$RESULT_DIR"
 
           jmeter -n \
-            -t "applications/${{ github.event.inputs.app_name }}/scripts/${{ github.event.inputs.jmx_file }}" \
+            -t "applications/$APP_NAME/scripts/$JMX_FILE" \
+            ${THREADS:+-JTHREADS="$THREADS"} \
+            ${DURATION:+-JDURATION="$DURATION"} \
+            ${RAMPUP:+-JRAMPUP="$RAMPUP"} \
+            ${AUTH_HEADER:+-JAUTH_HEADER="$AUTH_HEADER"} \
+            ${API_KEY:+-JAPI_KEY="$API_KEY"} \
+            ${AWS_ACCESS_KEY:+-JAWS_ACCESS_KEY="$AWS_ACCESS_KEY"} \
+            ${AWS_SECRET_KEY:+-JAWS_SECRET_KEY="$AWS_SECRET_KEY"} \
             -l "$RESULT_DIR/results.jtl" \
-            -e -o "$RESULT_DIR/html-report" \
-            -JTHREADS="$THREADS" \
-            -JDURATION="$DURATION" \
-            -JRAMPUP="$RAMPUP" \
-            -JAWS_ACCESS_KEY="$AWS_ACCESS_KEY" \
-            -JAWS_SECRET_KEY="$AWS_SECRET_KEY" \
-            -JAPP_NAME="${{ github.event.inputs.app_name }}"
+            -e -o "$RESULT_DIR/html-report"
 
           echo "result_dir=$RESULT_DIR" >> $GITHUB_OUTPUT
