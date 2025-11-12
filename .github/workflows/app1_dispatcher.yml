@@ -27,7 +27,7 @@ on:
           - load
           - cleanup
       runners_to_use:
-        description: "Number of parallel runners to use"
+        description: "Number of parallel runners"
         required: true
         type: choice
         options:
@@ -45,3 +45,7 @@ jobs:
       jmx_file: ${{ github.event.inputs.jmx_file }}
       test_type: ${{ github.event.inputs.test_type }}
       runners_to_use: ${{ github.event.inputs.runners_to_use }}
+    secrets:
+      # Dispatcher injects the correct app/env secrets
+      AWS_ACCESS_KEY: ${{ secrets.AWS_APPLICATIONA_${{ github.event.inputs.environment_name | upper }}_ACCESS_KEY }}
+      AWS_SECRET_KEY: ${{ secrets.AWS_APPLICATIONA_${{ github.event.inputs.environment_name | upper }}_SECRET_KEY }}
