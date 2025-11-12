@@ -1,29 +1,24 @@
-# This is the dedicated dispatcher for App1 that allows selecting the environment,
-# JMX file, and maps the correct secrets conditionally.
-name: "App1 - Multi-Environment Load Test"
+name: "Application A JMeter Dispatcher"
 
 on:
   workflow_dispatch:
     inputs:
       environment_name:
-        description: "Target Environment"
+        description: "Select environment"
         required: true
         type: choice
         options:
           - dev
-          - qa
           - staging
           - prod
-        default: 'dev'
-      jmx_script:
-        description: "Which JMeter test script to run? (Located in applications/app1/scripts/)"
-        required: true
+      jmx_file:
+        description: "Select JMeter test plan"
+        required: false
         type: choice
         options:
+          - sample_jmeter.jmx
           - High_TPS_Runner.jmx
-          - Sample_Smoke_Test.jmx
-          - Functional_Check.jmx
-        default: "High_TPS_Runner.jmx"
+        default: sample_jmeter.jmx
       test_type:
         description: "Choose test type (load/cleanup)"
         required: true
@@ -31,9 +26,8 @@ on:
         options:
           - load
           - cleanup
-        default: 'load'
       runners_to_use:
-        description: "Number of parallel runners to use (1-4)"
+        description: "Number of parallel runners to use"
         required: true
         type: choice
         options:
@@ -41,97 +35,13 @@ on:
           - '2'
           - '3'
           - '4'
-        default: '2'
-      test_name:
-        description: "Optional test name override"
-        required: false
-        default: ""
-      
-      # --- CUSTOM INPUT (Not passed to core framework) ---
-      verbose_setup_logging:
-        description: "Enable verbose log output during setup?"
-        required: false
-        type: boolean
-        default: false
-      # -----------------------------------------------------
 
 jobs:
-  # This job's sole purpose is to map the secrets conditionally and call the reusable workflow.
-  call-framework:
-    runs-on: ubuntu-latest
-    steps:
-      
-      # --- STEP USING THE CUSTOM INPUT LOCALLY ---
-      - name: Log Verbose Setting Status
-        run: |
-          if ${{ github.event.inputs.verbose_setup_logging }}; then
-            echo "::notice::Verbose logging is enabled. Printing detailed setup information."
-            # You could add more detailed logging logic here if the flag is true
-          else
-            echo "::notice::Verbose logging is disabled."
-          fi
-      # -------------------------------------------
-
-    # --- DEV ENVIRONMENT CALL ---
-    - name: Call Framework - DEV Secrets
-      if: ${{ github.event.inputs.environment_name == 'dev' }}
-      uses: ./.github/workflows/core-jmeter-framework.yml
-      with:
-        app_name: "app1"
-        environment_name: ${{ github.event.inputs.environment_name }}
-        jmx_file: "scripts/${{ github.event.inputs.jmx_script }}"
-        test_type: ${{ github.event.inputs.test_type }}
-        runners_to_use: ${{ github.event.inputs.runners_to_use }}
-        test_name: ${{ github.event.inputs.test_name }}
-      secrets:
-        # Map specific DEV secrets to generic framework inputs
-        API_SECRET_KEY: ${{ secrets.DEV_APP1_API_KEY }}
-        AWS_ACCESS_KEY: ${{ secrets.DEV_APP1_AWS_KEY }}
-
-    # --- QA ENVIRONMENT CALL ---
-    - name: Call Framework - QA Secrets
-      if: ${{ github.event.inputs.environment_name == 'qa' }}
-      uses: ./.github/workflows/core-jmeter-framework.yml
-      with:
-        app_name: "app1"
-        environment_name: ${{ github.event.inputs.environment_name }}
-        jmx_file: "scripts/${{ github.event.inputs.jmx_script }}"
-        test_type: ${{ github.event.inputs.test_type }}
-        runners_to_use: ${{ github.event.inputs.runners_to_use }}
-        test_name: ${{ github.event.inputs.test_name }}
-      secrets:
-        # Map specific QA secrets to generic framework inputs
-        API_SECRET_KEY: ${{ secrets.QA_APP1_API_KEY }}
-        AWS_ACCESS_KEY: ${{ secrets.QA_APP1_AWS_KEY }}
-
-    # --- STAGING ENVIRONMENT CALL ---
-    - name: Call Framework - Staging Secrets
-      if: ${{ github.event.inputs.environment_name == 'staging' }}
-      uses: ./.github/workflows/core-jmeter-framework.yml
-      with:
-        app_name: "app1"
-        environment_name: ${{ github.event.inputs.environment_name }}
-        jmx_file: "scripts/${{ github.event.inputs.jmx_script }}"
-        test_type: ${{ github.event.inputs.test_type }}
-        runners_to_use: ${{ github.event.inputs.runners_to_use }}
-        test_name: ${{ github.event.inputs.test_name }}
-      secrets:
-        # Map specific Staging secrets to generic framework inputs
-        API_SECRET_KEY: ${{ secrets.STAGING_APP1_API_KEY }}
-        AWS_ACCESS_KEY: ${{ secrets.STAGING_APP1_AWS_KEY }}
-
-    # --- PROD ENVIRONMENT CALL ---
-    - name: Call Framework - Prod Secrets
-      if: ${{ github.event.inputs.environment_name == 'prod' }}
-      uses: ./.github/workflows/core-jmeter-framework.yml
-      with:
-        app_name: "app1"
-        environment_name: ${{ github.event.inputs.environment_name }}
-        jmx_file: "scripts/${{ github.event.inputs.jmx_script }}"
-        test_type: ${{ github.event.inputs.test_type }}
-        runners_to_use: ${{ github.event.inputs.runners_to_use }}
-        test_name: ${{ github.event.inputs.test_name }}
-      secrets:
-        # Map specific Prod secrets to generic framework inputs
-        API_SECRET_KEY: ${{ secrets.PROD_APP1_API_KEY }}
-        AWS_ACCESS_KEY: ${{ secrets.PROD_APP1_AWS_KEY }}
+  dispatch-core:
+    uses: ./.github/workflows/core_jmeter_framework.yml
+    with:
+      app_name: "applicationA"
+      environment_name: ${{ github.event.inputs.environment_name }}
+      jmx_file: ${{ github.event.inputs.jmx_file }}
+      test_type: ${{ github.event.inputs.test_type }}
+      runners_to_use: ${{ github.event.inputs.runners_to_use }}
