@@ -47,7 +47,7 @@ on:
         required: false
         default: ""
       
-      # --- NEW CUSTOM INPUT (Not passed to core framework) ---
+      # --- CUSTOM INPUT (Not passed to core framework) ---
       verbose_setup_logging:
         description: "Enable verbose log output during setup?"
         required: false
