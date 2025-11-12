@@ -1,0 +1,130 @@
+name: "Core JMeter Framework"
+
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        required: true
+        type: string
+      environment_name:
+        required: true
+        type: string
+      jmx_file:
+        required: true
+        type: string
+      test_type:
+        required: true
+        type: string
+      runners_to_use:
+        required: true
+        type: string
+
+env:
+  JMETER_VERSION: "5.6.3"
+  REPORT_DIR: "./reports"
+  JMETER_HOME: "$HOME/jmeter"
+
+jobs:
+  set-test-name:
+    runs-on: ubuntu-latest
+    outputs:
+      final_test_name: ${{ steps.determine.outputs.final_test_name }}
+    steps:
+      - id: determine
+        run: |
+          if [ -n "${{ github.event.inputs.test_name }}" ]; then
+            NAME="${{ github.event.inputs.test_name }}"
+          else
+            NAME=$(date +%Y%m%d%H%M)
+          fi
+          SAFE_NAME=$(echo "$NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
+          echo "final_test_name=$SAFE_NAME" >> $GITHUB_OUTPUT
+          echo "✅ Test name set to: $SAFE_NAME"
+
+  run-jmeter:
+    needs: set-test-name
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runner_index: [1,2,3,4]
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # Skip unused runners
+      - name: Skip unused runner jobs
+        if: ${{ matrix.runner_index > fromJSON(github.event.inputs.runners_to_use) }}
+        run: |
+          echo "Skipping runner ${{ matrix.runner_index }}"
+          exit 0
+
+      # Load app-specific environment variables
+      - name: Load environment variables
+        shell: bash
+        run: |
+          APP="${{ github.event.inputs.app_name }}"
+          ENV="${{ github.event.inputs.environment_name }}"
+          JMX_FILE="${{ github.event.inputs.jmx_file }}"
+          echo "ℹ️ App: $APP, Env: $ENV, JMX: $JMX_FILE"
+
+          # Load app .env
+          ENV_FILE="applications/$APP/.env"
+          if [ -f "$ENV_FILE" ]; then
+            set -o allexport
+            grep -v '^#' "$ENV_FILE" | grep -v '^\s*$' | while read -r line; do
+              varname=$(echo "$line" | cut -d '=' -f1)
+              value=$(echo "$line" | cut -d '=' -f2-)
+              export "$varname=$value"
+            done
+            set +o allexport
+          fi
+
+          # Load AWS secrets dynamically
+          ACCESS_KEY_VAR="AWS_${APP^^}_${ENV^^}_ACCESS_KEY"
+          SECRET_KEY_VAR="AWS_${APP^^}_${ENV^^}_SECRET_KEY"
+          export AWS_ACCESS_KEY="${{ secrets[ACCESS_KEY_VAR] }}"
+          export AWS_SECRET_KEY="${{ secrets[SECRET_KEY_VAR] }}"
+
+          echo "AWS_ACCESS_KEY=$AWS_ACCESS_KEY" >> $GITHUB_ENV
+          echo "AWS_SECRET_KEY=$AWS_SECRET_KEY" >> $GITHUB_ENV
+          echo "APP_NAME=$APP" >> $GITHUB_ENV
+          echo "JMX_FILE=$JMX_FILE" >> $GITHUB_ENV
+
+      - name: Check JMeter test plan exists
+        run: |
+          TEST_PLAN="applications/${{ github.event.inputs.app_name }}/scripts/${{ github.event.inputs.jmx_file }}"
+          if [ ! -f "$TEST_PLAN" ]; then
+            echo "❌ Test plan not found!"
+            exit 1
+          fi
+          echo "✅ Test plan exists: $TEST_PLAN"
+
+      # Install JMeter (if missing)
+      - name: Install JMeter
+        run: |
+          if [ ! -d "$HOME/jmeter" ]; then
+            mkdir -p $HOME/jmeter
+            curl -L https://downloads.apache.org/jmeter/binaries/apache-jmeter-$JMETER_VERSION.tgz -o jmeter.tgz
+            tar -xzf jmeter.tgz
+            mv apache-jmeter-$JMETER_VERSION $HOME/jmeter
+            echo "$HOME/jmeter/bin" >> $GITHUB_PATH
+          fi
+
+      # Run JMeter test
+      - name: Run JMeter Test
+        run: |
+          TEST_NAME="${{ needs.set-test-name.outputs.final_test_name }}"
+          RESULT_DIR="${{ env.REPORT_DIR }}/$TEST_NAME-runner-${{ matrix.runner_index }}"
+          mkdir -p "$RESULT_DIR"
+          jmeter -n \
+            -t "applications/${{ github.event.inputs.app_name }}/scripts/${{ github.event.inputs.jmx_file }}" \
+            -l "$RESULT_DIR/results.jtl" \
+            -e -o "$RESULT_DIR/html-report" \
+            -JTHREADS="$THREADS" \
+            -JDURATION="$DURATION" \
+            -JRAMPUP="$RAMPUP" \
+            -JAWS_ACCESS_KEY="$AWS_ACCESS_KEY" \
+            -JAWS_SECRET_KEY="$AWS_SECRET_KEY" \
+            -JAPP_NAME="${{ github.event.inputs.app_name }}"
+          echo "result_dir=$RESULT_DIR" >> $GITHUB_OUTPUT
