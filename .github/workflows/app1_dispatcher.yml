@@ -46,6 +46,10 @@ jobs:
       test_type: ${{ github.event.inputs.test_type }}
       runners_to_use: ${{ github.event.inputs.runners_to_use }}
     secrets:
-      # Dispatcher injects the correct app/env secrets
-      AWS_ACCESS_KEY: ${{ secrets.AWS_APPLICATIONA_${{ github.event.inputs.environment_name | upper }}_ACCESS_KEY }}
-      AWS_SECRET_KEY: ${{ secrets.AWS_APPLICATIONA_${{ github.event.inputs.environment_name | upper }}_SECRET_KEY }}
+      # These are all possible secrets for the app
+      AWS_APPLICATIONA_DEV_ACCESS_KEY: ${{ secrets.AWS_APPLICATIONA_DEV_ACCESS_KEY }}
+      AWS_APPLICATIONA_DEV_SECRET_KEY: ${{ secrets.AWS_APPLICATIONA_DEV_SECRET_KEY }}
+      AWS_APPLICATIONA_STAGING_ACCESS_KEY: ${{ secrets.AWS_APPLICATIONA_STAGING_ACCESS_KEY }}
+      AWS_APPLICATIONA_STAGING_SECRET_KEY: ${{ secrets.AWS_APPLICATIONA_STAGING_SECRET_KEY }}
+      AWS_APPLICATIONA_PROD_ACCESS_KEY: ${{ secrets.AWS_APPLICATIONA_PROD_ACCESS_KEY }}
+      AWS_APPLICATIONA_PROD_SECRET_KEY: ${{ secrets.AWS_APPLICATIONA_PROD_SECRET_KEY }}
