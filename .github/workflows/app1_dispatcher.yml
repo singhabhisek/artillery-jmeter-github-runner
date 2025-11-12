@@ -45,11 +45,14 @@ jobs:
       jmx_file: ${{ github.event.inputs.jmx_file }}
       test_type: ${{ github.event.inputs.test_type }}
       runners_to_use: ${{ github.event.inputs.runners_to_use }}
+
+      # Optional app-specific variables, injected from secrets or config
+      DURATION: ${{ secrets.APP_A_${{ github.event.inputs.environment_name | upper }}_DURATION }}
+      THREADS: ${{ secrets.APP_A_${{ github.event.inputs.environment_name | upper }}_THREADS }}
+      RAMPUP: ${{ secrets.APP_A_${{ github.event.inputs.environment_name | upper }}_RAMPUP }}
+      AUTH_HEADER: ${{ secrets.APP_A_${{ github.event.inputs.environment_name | upper }}_AUTH_HEADER }}
+      API_KEY: ${{ secrets.APP_A_${{ github.event.inputs.environment_name | upper }}_API_KEY }}
+
     secrets:
-      # These are all possible secrets for the app
-      AWS_APPLICATIONA_DEV_ACCESS_KEY: ${{ secrets.AWS_APPLICATIONA_DEV_ACCESS_KEY }}
-      AWS_APPLICATIONA_DEV_SECRET_KEY: ${{ secrets.AWS_APPLICATIONA_DEV_SECRET_KEY }}
-      AWS_APPLICATIONA_STAGING_ACCESS_KEY: ${{ secrets.AWS_APPLICATIONA_STAGING_ACCESS_KEY }}
-      AWS_APPLICATIONA_STAGING_SECRET_KEY: ${{ secrets.AWS_APPLICATIONA_STAGING_SECRET_KEY }}
-      AWS_APPLICATIONA_PROD_ACCESS_KEY: ${{ secrets.AWS_APPLICATIONA_PROD_ACCESS_KEY }}
-      AWS_APPLICATIONA_PROD_SECRET_KEY: ${{ secrets.AWS_APPLICATIONA_PROD_SECRET_KEY }}
+      AWS_ACCESS_KEY: ${{ secrets.AWS_APPLICATIONA_DEV_ACCESS_KEY }}
+      AWS_SECRET_KEY: ${{ secrets.AWS_APPLICATIONA_DEV_SECRET_KEY }}
