@@ -77,7 +77,10 @@ on:
 jobs:
   call-jmeter-framework:
     uses: ./.github/workflows/core_jmeter_framework.yml
-    
+    permissions:
+      actions: write # Grant the necessary permission
+      contents: read # Grant the necessary permission
+      
     with:
       # Pass ALL inputs directly to the reusable workflow
       app_name: ${{ github.event.inputs.app_name }}
