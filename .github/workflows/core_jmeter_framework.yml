@@ -3,6 +3,11 @@
 
 name: "JMeter Load Test Framework (Core Logic)"
 
+# Set necessary permissions for the reusable workflow
+permissions:
+  actions: write
+  contents: read
+  
 # Define the workflow as reusable
 on:
   workflow_call:
@@ -52,12 +57,6 @@ on:
         required: false
         type: string
         default: "false"
-
-    # Set necessary permissions for the reusable workflow
-    permissions:
-      actions: write
-      contents: read
-
 env:
   JMETER_VERSION: "5.6.3"
   SCRIPTS_DIR: "applications"
