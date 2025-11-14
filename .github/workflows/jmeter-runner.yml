@@ -28,6 +28,14 @@ on:
         options:
           - load
           - cleanup
+      environment:
+        description: "Choose environment type (dev/prod)"
+        required: true
+        type: choice
+        default: "dev"
+        options:
+          - dev
+          - test
       runners_to_use:
         description: "Number of parallel runners to use (1–4)"
         required: true
@@ -178,12 +186,12 @@ jobs:
         shell: bash
         env:
           # Use vars context to retrieve dynamic variables based on app_name input
-          APP_BASE_URL: ${{ vars[format('{0}_BASE_URL', github.event.inputs.app_name)] }}
-          APP_TARGET_HOST: ${{ vars[format('{0}_TARGET_HOST', github.event.inputs.app_name)] }}
-          APP_REGION: ${{ vars[format('{0}_REGION', github.event.inputs.app_name)] }}
+          APP_BASE_URL: ${{ vars[format('{0}_{1}_BASE_URL', github.event.inputs.app_name, github.event.inputs.environment)] }}
+          APP_TARGET_HOST: ${{ vars[format('{0}_{1}_TARGET_HOST', github.event.inputs.app_name, github.event.inputs.environment)] }}
+          APP_REGION: ${{ vars[format('{0}_{1}_REGION', github.event.inputs.app_name, github.event.inputs.environment)] }}
           # Use secrets context to retrieve dynamic secrets
-          APP_ACCESS_KEY: ${{ secrets[format('{0}_ACCESS_KEY', github.event.inputs.app_name)] }}
-          APP_SECRET_KEY: ${{ secrets[format('{0}_SECRET_KEY', github.event.inputs.app_name)] }}
+          APP_ACCESS_KEY: ${{ secrets[format('{0}_{1}_ACCESS_KEY', github.event.inputs.app_name, github.event.inputs.environment)] }}
+          APP_SECRET_KEY: ${{ secrets[format('{0}_{1}_SECRET_KEY', github.event.inputs.app_name, github.event.inputs.environment)] }}
           APP_UPPER: ${{ github.event.inputs.app_name }} # Pass app_name to the shell
         run: |
           # Convert app_name input to uppercase (e.g., "app1" -> "APP1")
