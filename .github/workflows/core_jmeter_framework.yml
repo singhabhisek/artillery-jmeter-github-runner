@@ -366,46 +366,46 @@ jobs:
           JMETER_HOME="$HOME/jmeter"
           echo "Attempting to install CMDRunner and MergeResults plugin (best-effort)..."
           
-          # Download CMDRunner jar (used for ReportsGenerator/merging)
-          curl -L -s -o "$JMETER_HOME/lib/cmdrunner-2.3.jar" \
-            https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.3/cmdrunner-2.3.jar || {
-              echo "⚠️ Could not download cmdrunner jar"
-              echo "installed=false" >> $GITHUB_OUTPUT
-              exit 0
-            }
+      #     # Download CMDRunner jar (used for ReportsGenerator/merging)
+      #     curl -L -s -o "$JMETER_HOME/lib/cmdrunner-2.3.jar" \
+      #       https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.3/cmdrunner-2.3.jar || {
+      #         echo "⚠️ Could not download cmdrunner jar"
+      #         echo "installed=false" >> $GITHUB_OUTPUT
+      #         exit 0
+      #       }
           
-          # Download plugins manager
-          curl -L -s -o "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar" https://jmeter-plugins.org/get/ || {
-            echo "⚠️ Could not download jmeter-plugins-manager.jar"
-            echo "installed=false" >> $GITHUB_OUTPUT
-            exit 0
-          }
+      #     # Download plugins manager
+      #     curl -L -s -o "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar" https://jmeter-plugins.org/get/ || {
+      #       echo "⚠️ Could not download jmeter-plugins-manager.jar"
+      #       echo "installed=false" >> $GITHUB_OUTPUT
+      #       exit 0
+      #     }
           
-          # Use installer to get PluginsManagerCMD.sh
-          java -cp "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar" org.jmeterplugins.repository.PluginManagerCMDInstaller || true
+      #     # Use installer to get PluginsManagerCMD.sh
+      #     java -cp "$JMETER_HOME/lib/ext/jmeter-plugins-manager.jar" org.jmeterplugins.repository.PluginManagerCMDInstaller || true
           
-          # Verify the helper script is present; make it executable
-          if [ -f "$JMETER_HOME/bin/PluginsManagerCMD.sh" ]; then
-            chmod +x "$JMETER_HOME/bin/PluginsManagerCMD.sh" || true
-            # Try to install MergeResults plugin
-            echo "Installing jpgc-mergeresults via PluginsManagerCMD.sh..."
-            # run with timeout to avoid indefinite hangs
-            timeout 120 "$JMETER_HOME/bin/PluginsManagerCMD.sh" install jpgc-mergeresults && {
-              echo "installed=true" >> $GITHUB_OUTPUT
-              echo "MergeResults plugin installed."
-              exit 0
-            } || {
-              echo "⚠️ PluginsManagerCMD.sh install failed or timed out"
-              echo "installed=false" >> $GITHUB_OUTPUT
-              exit 0
-            }
-          else
-            echo "⚠️ PluginsManagerCMD.sh not found after installer"
-            echo "installed=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
+      #     # Verify the helper script is present; make it executable
+      #     if [ -f "$JMETER_HOME/bin/PluginsManagerCMD.sh" ]; then
+      #       chmod +x "$JMETER_HOME/bin/PluginsManagerCMD.sh" || true
+      #       # Try to install MergeResults plugin
+      #       echo "Installing jpgc-mergeresults via PluginsManagerCMD.sh..."
+      #       # run with timeout to avoid indefinite hangs
+      #       timeout 120 "$JMETER_HOME/bin/PluginsManagerCMD.sh" install jpgc-mergeresults && {
+      #         echo "installed=true" >> $GITHUB_OUTPUT
+      #         echo "MergeResults plugin installed."
+      #         exit 0
+      #       } || {
+      #         echo "⚠️ PluginsManagerCMD.sh install failed or timed out"
+      #         echo "installed=false" >> $GITHUB_OUTPUT
+      #         exit 0
+      #       }
+      #     else
+      #       echo "⚠️ PluginsManagerCMD.sh not found after installer"
+      #       echo "installed=false" >> $GITHUB_OUTPUT
+      #       exit 0
+      #     fi
           
-        continue-on-error: true
+      #   continue-on-error: true
       
       - name: Merge JTL files (MergeResults preferred, fallback to concat)
         shell: bash
@@ -454,31 +454,31 @@ jobs:
           MERGERESULTS_JAR=$(find "$HOME/jmeter/lib/ext" -type f -name "*mergeresults*.jar" -print -quit || true)
           MERGE_INSTALLED=false
           
-          if [ -f "$CMD_JAR" ] && [ -n "$MERGERESULTS_JAR" ]; then
-            echo "ℹ️ CMDRunner and MergeResults jar detected; attempting ReportsGenerator merge."
-            PLUGIN_CP=$(find "$HOME/jmeter/lib/ext" -name "*.jar" -printf "%p:" | sed 's/:$//')
-            MERGED_JTL="final-results/merged.jtl"
+          # if [ -f "$CMD_JAR" ] && [ -n "$MERGERESULTS_JAR" ]; then
+          #   echo "ℹ️ CMDRunner and MergeResults jar detected; attempting ReportsGenerator merge."
+          #   PLUGIN_CP=$(find "$HOME/jmeter/lib/ext" -name "*.jar" -printf "%p:" | sed 's/:$//')
+          #   MERGED_JTL="final-results/merged.jtl"
             
-            echo "Running ReportsGenerator (CMDRunner) to merge..."
-            java -cp "$CMD_JAR:$PLUGIN_CP" kg.apc.cmdtools.ReportsGenerator \
-              --generate-csv "$MERGED_JTL" \
-              --input-jtl "${JTLS[@]}" && {
-                MERGE_INSTALLED=true
-              } || {
-                echo "⚠️ ReportsGenerator failed; falling back to simple concat merge"
-                MERGE_INSTALLED=false
-              }
+          #   echo "Running ReportsGenerator (CMDRunner) to merge..."
+          #   java -cp "$CMD_JAR:$PLUGIN_CP" kg.apc.cmdtools.ReportsGenerator \
+          #     --generate-csv "$MERGED_JTL" \
+          #     --input-jtl "${JTLS[@]}" && {
+          #       MERGE_INSTALLED=true
+          #     } || {
+          #       echo "⚠️ ReportsGenerator failed; falling back to simple concat merge"
+          #       MERGE_INSTALLED=false
+          #     }
             
-            if [ -f "$MERGED_JTL" ]; then
-              echo "✅ ReportsGenerator merged JTL to: $MERGED_JTL"
-            else
-              echo "⚠️ ReportsGenerator did not produce merged JTL; will try fallback merge."
-              MERGE_INSTALLED=false
-            fi
-          else
-            echo "⚠️ CMDRunner or MergeResults jar not present; will use fallback concatenation merge."
-            MERGE_INSTALLED=false
-          fi
+          #   if [ -f "$MERGED_JTL" ]; then
+          #     echo "✅ ReportsGenerator merged JTL to: $MERGED_JTL"
+          #   else
+          #     echo "⚠️ ReportsGenerator did not produce merged JTL; will try fallback merge."
+          #     MERGE_INSTALLED=false
+          #   fi
+          # else
+          #   echo "⚠️ CMDRunner or MergeResults jar not present; will use fallback concatenation merge."
+          #   MERGE_INSTALLED=false
+          # fi
           
           # Fallback: header + tail concatenation
           if [ "$MERGE_INSTALLED" = "false" ] || [ ! -f "final-results/merged.jtl" ]; then
