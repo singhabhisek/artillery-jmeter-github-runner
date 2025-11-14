@@ -1,58 +1,82 @@
-name: "Application A JMeter Dispatcher"
+# .github/workflows/app1-dispatcher.yml
+# This is the application-specific YML that the user interacts with (dispatcher).
+
+name: "App1 Load Test Runner"
+
+run-name: >
+  App1 Test: ${{ github.event.inputs.test_name }}
 
 on:
   workflow_dispatch:
     inputs:
-      environment_name:
-        description: "Select environment"
+      # --- App1-Specific Configuration ---
+      jmx_file:
+        description: "App1 JMeter test plan to run"
+        required: false
+        default: "app1_checkout_flow.jmx" # <--- App1 specific default JMX
+        type: choice
+        options:
+          - app1_checkout_flow.jmx
+          - app1_login_test.jmx
+          
+      runners_to_use:
+        description: "Number of parallel runners (App1 is demanding, max 2 recommended)"
         required: true
         type: choice
+        default: "2"
         options:
-          - dev
-          - staging
-          - prod
-      jmx_file:
-        description: "Select JMeter test plan"
-        required: false
-        type: choice
-        options:
-          - sample_jmeter.jmx
-          - High_TPS_Runner.jmx
-        default: sample_jmeter.jmx
+          - '1'
+          - '2'
+
+      # --- Generic/Required Configurations ---
       test_type:
         description: "Choose test type (load/cleanup)"
         required: true
         type: choice
+        default: "load"
         options:
           - load
           - cleanup
-      runners_to_use:
-        description: "Number of parallel runners"
+
+      environment:
+        description: "Choose environment type for variable lookup (dev/prod)"
         required: true
         type: choice
+        default: "prod"
         options:
-          - '1'
-          - '2'
-          - '3'
-          - '4'
+          - dev
+          - prod
+
+      environment_name:
+        description: "Select GitHub Environment (test or prod) for secrets"
+        required: true
+        type: choice
+        default: "test"
+        options:
+          - test
+          - prod
+
+      test_name:
+        description: "Optional test name"
+        required: false
+        default: ""
 
 jobs:
-  dispatch-core:
-    uses: ./.github/workflows/core_jmeter_framework.yml
+  # The only job: call the reusable framework
+  call-jmeter-framework:
+    uses: ./.github/workflows/core_jmeter_framework.yml # Reference the core logic file
     with:
-      app_name: "applicationA"
-      environment_name: ${{ github.event.inputs.environment_name }}
+      # Pass the FIXED app_name (this is the key to your framework)
+      app_name: "app1" 
+      
+      # Pass selected options from this dispatcher to the core framework
       jmx_file: ${{ github.event.inputs.jmx_file }}
       test_type: ${{ github.event.inputs.test_type }}
+      environment: ${{ github.event.inputs.environment }}
       runners_to_use: ${{ github.event.inputs.runners_to_use }}
-
-      # Optional app-specific variables, injected from secrets or config
-      DURATION: ${{ secrets.APP_A_${{ github.event.inputs.environment_name | upper }}_DURATION }}
-      THREADS: ${{ secrets.APP_A_${{ github.event.inputs.environment_name | upper }}_THREADS }}
-      RAMPUP: ${{ secrets.APP_A_${{ github.event.inputs.environment_name | upper }}_RAMPUP }}
-      AUTH_HEADER: ${{ secrets.APP_A_${{ github.event.inputs.environment_name | upper }}_AUTH_HEADER }}
-      API_KEY: ${{ secrets.APP_A_${{ github.event.inputs.environment_name | upper }}_API_KEY }}
-
-    secrets:
-      AWS_ACCESS_KEY: ${{ secrets.AWS_APPLICATIONA_DEV_ACCESS_KEY }}
-      AWS_SECRET_KEY: ${{ secrets.AWS_APPLICATIONA_DEV_SECRET_KEY }}
+      test_name: ${{ github.event.inputs.test_name }}
+      environment_name: ${{ github.event.inputs.environment_name }}
+      
+      # Pass any optional, fixed settings if you don't want the user to choose
+      monitor_system: "false"
+      cleanup_days: "7"
