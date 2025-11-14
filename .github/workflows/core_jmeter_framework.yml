@@ -34,10 +34,7 @@ on:
         required: false
         default: ""
         type: string
-      environment_name:
-        description: "Select environment (test or prod) for GitHub Environment context"
-        required: true
-        type: string
+      
       monitor_system:
         description: "Monitor runner CPU/memory usage during test? true/false"
         required: false
@@ -92,7 +89,7 @@ jobs:
     if: ${{ inputs.test_type == 'load' }}
     needs: set-test-name
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment_name }}
+    environment: ${{ inputs.environment }}
 
     strategy:
       fail-fast: false
