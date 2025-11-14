@@ -51,13 +51,7 @@ on:
         description: "Optional test name; if blank, YYYYMMDDHHMM will be used"
         required: false
         default: ""
-      environment_name:
-        description: "Select environment (test or prod)"
-        required: true
-        type: choice
-        options:
-          - test
-          - prod
+      
       monitor_system:
         description: "Monitor runner CPU/memory usage during test? true/false"
         required: false
@@ -80,7 +74,7 @@ on:
           
 jobs:
   call-jmeter-framework:
-    uses: ./.github/workflows/jmeter-core.yml 
+    uses: ./.github/workflows/core_jmeter_framework.yml
     
     with:
       # Pass ALL inputs directly to the reusable workflow
@@ -90,7 +84,7 @@ jobs:
       environment: ${{ github.event.inputs.environment }}
       runners_to_use: ${{ github.event.inputs.runners_to_use }}
       test_name: ${{ github.event.inputs.test_name }}
-      environment_name: ${{ github.event.inputs.environment_name }}
+      
       monitor_system: ${{ github.event.inputs.monitor_system }}
       cleanup_days: ${{ github.event.inputs.cleanup_days }}
       print_machine_info: ${{ github.event.inputs.print_machine_info }}
