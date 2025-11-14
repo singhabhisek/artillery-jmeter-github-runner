@@ -4,7 +4,7 @@
 name: "App2 Load Test Dispatcher"
 
 run-name: >
-  App1 JMeter Workflow: ${{ github.event.inputs.test_name }}
+  App2 JMeter Workflow: ${{ github.event.inputs.test_name }}
 
 on:
   workflow_dispatch:
