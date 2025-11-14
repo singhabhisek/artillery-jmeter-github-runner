@@ -20,8 +20,8 @@ on:
         default: "app1_checkout_flow.jmx" # Tailored choices/default
         type: choice
         options:
-          - app1_checkout_flow.jmx
-          - app1_login_test.jmx
+          - sample_jmeter.jmx
+          - High_TPS_Runner.jmx
       test_type:
         description: "Choose test type (load/cleanup)"
         required: true
