@@ -1,82 +1,96 @@
 # .github/workflows/app1-dispatcher.yml
-# This is the application-specific YML that the user interacts with (dispatcher).
+# This is the application-specific dispatcher YML (what the user runs).
 
-name: "App1 Load Test Runner"
+name: "App1 Load Test Dispatcher"
 
 run-name: >
-  App1 Test: ${{ github.event.inputs.test_name }}
+  App1 JMeter Workflow: ${{ github.event.inputs.test_name }}
 
 on:
   workflow_dispatch:
     inputs:
-      # --- App1-Specific Configuration ---
+      app_name:
+        description: "Application name (e.g., app1, app2)"
+        required: true
+        type: string
+        default: "app1" # Tailored default
       jmx_file:
-        description: "App1 JMeter test plan to run"
+        description: "Which JMeter test plan to run?"
         required: false
-        default: "app1_checkout_flow.jmx" # <--- App1 specific default JMX
+        default: "app1_checkout_flow.jmx" # Tailored choices/default
         type: choice
         options:
           - app1_checkout_flow.jmx
           - app1_login_test.jmx
-          
+      test_type:
+        description: "Choose test type (load/cleanup)"
+        required: true
+        type: choice
+        options:
+          - load
+          - cleanup
+      environment:
+        description: "Choose environment type (dev/prod)"
+        required: true
+        type: choice
+        default: "dev"
+        options:
+          - dev
+          - test
       runners_to_use:
-        description: "Number of parallel runners (App1 is demanding, max 2 recommended)"
+        description: "Number of parallel runners to use (1–4)"
         required: true
         type: choice
         default: "2"
         options:
           - '1'
           - '2'
-
-      # --- Generic/Required Configurations ---
-      test_type:
-        description: "Choose test type (load/cleanup)"
-        required: true
-        type: choice
-        default: "load"
-        options:
-          - load
-          - cleanup
-
-      environment:
-        description: "Choose environment type for variable lookup (dev/prod)"
-        required: true
-        type: choice
-        default: "prod"
-        options:
-          - dev
-          - prod
-
+          - '3'
+          - '4'
+      test_name:
+        description: "Optional test name; if blank, YYYYMMDDHHMM will be used"
+        required: false
+        default: ""
       environment_name:
-        description: "Select GitHub Environment (test or prod) for secrets"
+        description: "Select environment (test or prod)"
         required: true
         type: choice
-        default: "test"
         options:
           - test
           - prod
-
-      test_name:
-        description: "Optional test name"
+      monitor_system:
+        description: "Monitor runner CPU/memory usage during test? true/false"
         required: false
-        default: ""
-
+        type: choice
+        options:
+          - "true"
+          - "false"
+        default: "false"
+      cleanup_days:
+        description: "Delete reports older than X days (cleanup mode)"
+        required: false
+        default: "7"
+      print_machine_info:
+        description: "Set true to print machine details"
+        required: false
+        type: choice
+        options:
+          - "true"
+          - "false"
+          
 jobs:
-  # The only job: call the reusable framework
   call-jmeter-framework:
-    uses: ./.github/workflows/core_jmeter_framework.yml # Reference the core logic file
+    uses: ./.github/workflows/jmeter-core.yml 
+    
     with:
-      # Pass the FIXED app_name (this is the key to your framework)
-      app_name: "app1" 
-      
-      # Pass selected options from this dispatcher to the core framework
+      # Pass ALL inputs directly to the reusable workflow
+      app_name: ${{ github.event.inputs.app_name }}
       jmx_file: ${{ github.event.inputs.jmx_file }}
       test_type: ${{ github.event.inputs.test_type }}
       environment: ${{ github.event.inputs.environment }}
       runners_to_use: ${{ github.event.inputs.runners_to_use }}
       test_name: ${{ github.event.inputs.test_name }}
       environment_name: ${{ github.event.inputs.environment_name }}
-      
-      # Pass any optional, fixed settings if you don't want the user to choose
-      monitor_system: "false"
-      cleanup_days: "7"
+      monitor_system: ${{ github.event.inputs.monitor_system }}
+      cleanup_days: ${{ github.event.inputs.cleanup_days }}
+      print_machine_info: ${{ github.event.inputs.print_machine_info }}
