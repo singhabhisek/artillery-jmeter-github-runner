@@ -1,0 +1,98 @@
+# .github/workflows/app1-dispatcher.yml
+# This is the application-specific dispatcher YML (what the user runs).
+
+name: "App2 Load Test Dispatcher"
+
+run-name: >
+  App1 JMeter Workflow: ${{ github.event.inputs.test_name }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: "Application name (e.g., app1, app2)"
+        required: true
+        type: string
+        default: "app1" # Tailored default
+      jmx_file:
+        description: "Which JMeter test plan to run?"
+        required: false
+        default: "sample_jmeter.jmx" # Tailored choices/default
+        type: choice
+        options:
+          - app2_checkou_flow.jmx
+          - sample_jmeter.jmx
+          - High_TPS_Runner.jmx
+          - app2_checkin_flow.jmx
+      test_type:
+        description: "Choose test type (load/cleanup)"
+        required: true
+        type: choice
+        options:
+          - load
+          - cleanup
+      environment:
+        description: "Choose environment type (dev/prod)"
+        required: true
+        type: choice
+        default: "dev"
+        options:
+          - dev
+          - test
+      runners_to_use:
+        description: "Number of parallel runners to use (1–4)"
+        required: true
+        type: choice
+        default: "2"
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+      test_name:
+        description: "Optional test name; if blank, YYYYMMDDHHMM will be used"
+        required: false
+        default: ""
+      environment_name:
+        description: "Select environment (test or prod)"
+        required: true
+        type: choice
+        options:
+          - test
+          - prod
+      monitor_system:
+        description: "Monitor runner CPU/memory usage during test? true/false"
+        required: false
+        type: choice
+        options:
+          - "true"
+          - "false"
+        default: "false"
+      cleanup_days:
+        description: "Delete reports older than X days (cleanup mode)"
+        required: false
+        default: "7"
+      print_machine_info:
+        description: "Set true to print machine details"
+        required: false
+        type: choice
+        options:
+          - "true"
+          - "false"
+          
+jobs:
+  call-jmeter-framework:
+    uses: ./.github/workflows/jmeter-core.yml 
+    
+    with:
+      # Pass ALL inputs directly to the reusable workflow
+      app_name: ${{ github.event.inputs.app_name }}
+      jmx_file: ${{ github.event.inputs.jmx_file }}
+      test_type: ${{ github.event.inputs.test_type }}
+      environment: ${{ github.event.inputs.environment }}
+      runners_to_use: ${{ github.event.inputs.runners_to_use }}
+      test_name: ${{ github.event.inputs.test_name }}
+      environment_name: ${{ github.event.inputs.environment_name }}
+      monitor_system: ${{ github.event.inputs.monitor_system }}
+      cleanup_days: ${{ github.event.inputs.cleanup_days }}
+      print_machine_info: ${{ github.event.inputs.print_machine_info }}
