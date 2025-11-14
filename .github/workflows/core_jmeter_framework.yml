@@ -1,17 +1,13 @@
 # .github/workflows/jmeter-core.yml
-# This is the reusable workflow containing all the core execution logic.
+# This is the reusable workflow containing ALL the core execution logic,
+# using 'inputs' instead of 'github.event.inputs'.
 
 name: "JMeter Load Test Framework (Core Logic)"
 
-# Set necessary permissions for the reusable workflow
-permissions:
-  actions: write
-  contents: read
-  
-# Define the workflow as reusable
 on:
   workflow_call:
     inputs:
+      # These inputs exactly match your original 'workflow_dispatch' parameters
       app_name:
         description: "Application name (e.g., app1, app2)"
         required: true
@@ -26,7 +22,7 @@ on:
         required: true
         type: string
       environment:
-        description: "Choose environment type (dev/prod) for variable mapping"
+        description: "Choose environment type (dev/prod) for variable lookup"
         required: true
         type: string
       runners_to_use:
@@ -38,15 +34,15 @@ on:
         required: false
         default: ""
         type: string
-      environment_name: # Maps to the GitHub Environment context (e.g., 'test' or 'prod')
-        description: "Select environment for secrets/vars retrieval (test or prod)"
+      environment_name:
+        description: "Select environment (test or prod) for GitHub Environment context"
         required: true
         type: string
       monitor_system:
         description: "Monitor runner CPU/memory usage during test? true/false"
         required: false
-        type: string
         default: "false"
+        type: string
       cleanup_days:
         description: "Delete reports older than X days (cleanup mode)"
         required: false
@@ -57,6 +53,11 @@ on:
         required: false
         type: string
         default: "false"
+
+    permissions:
+      actions: write
+      contents: read
+
 env:
   JMETER_VERSION: "5.6.3"
   SCRIPTS_DIR: "applications"
@@ -75,7 +76,6 @@ jobs:
     steps:
       - id: determine
         run: |
-          # Use 'github.event.inputs' passed from the calling workflow
           if [ -n "${{ inputs.test_name }}" ]; then
             NAME="${{ inputs.test_name }}"
           else
@@ -86,15 +86,12 @@ jobs:
           echo "✅ Test name set to: $SAFE_NAME"
 
   # =========================================================
-  # Job 2: Run JMeter runners
+  # Job 2: Run JMeter runners (FULL LOGIC)
   # =========================================================
   run-jmeter:
-    # Use 'inputs.test_type'
     if: ${{ inputs.test_type == 'load' }}
     needs: set-test-name
     runs-on: ubuntu-latest
-
-    # Use environment context based on input
     environment: ${{ inputs.environment_name }}
 
     strategy:
@@ -109,7 +106,6 @@ jobs:
           fetch-depth: 0
 
       - name: Skip unused runner jobs
-        # Use 'inputs.runners_to_use'
         if: ${{ matrix.runner_index > fromJSON(inputs.runners_to_use) }}
         run: |
           echo "Skipping runner ${{ matrix.runner_index }}"
@@ -124,19 +120,15 @@ jobs:
           echo "Public IP: $(curl -s ifconfig.me)"
           curl -s https://ipapi.co/json/
           echo "========================"
-          
-      # -----------------------------
-      # Load local environment variables (from .env file)
-      # -----------------------------
+
       - name: Load local environment variables (from .env file)
         if: ${{ matrix.runner_index <= fromJSON(inputs.runners_to_use) }}
         shell: bash
         run: |
-          # Use 'inputs.app_name'
           APP_NAME="${{ inputs.app_name }}"
           ENV_FILE="./$APP_NAME/.env"
           
-          # Initialize variables for export
+          # Default values (can be overridden by the next step or provided to jmeter command)
           DURATION=""
           THREADS=""
           RAMPUP=""
@@ -145,7 +137,6 @@ jobs:
           
           if [ -f "$ENV_FILE" ]; then
             echo "✅ Loading environment variables from $ENV_FILE"
-            # Load and export variables found in the .env file to the current shell
             set -o allexport
             grep -v '^#' "$ENV_FILE" | grep -v '^\s*$' | while read -r line; do
               if [[ "$line" == *"="* ]]; then
@@ -166,37 +157,26 @@ jobs:
           echo "AUTH_HEADER=${AUTH_HEADER:-}" >> $GITHUB_ENV
           echo "API_KEY=${API_KEY:-}" >> $GITHUB_ENV
 
-      # -----------------------------
-      # Map Environment Variables Dynamically
-      # -----------------------------
       - name: Map Environment Variables Dynamically
         if: ${{ matrix.runner_index <= fromJSON(inputs.runners_to_use) }}
         shell: bash
         env:
-          # Use 'inputs.app_name' and 'inputs.environment'
           APP_BASE_URL: ${{ vars[format('{0}_{1}_BASE_URL', inputs.app_name, inputs.environment)] }}
           APP_TARGET_HOST: ${{ vars[format('{0}_{1}_TARGET_HOST', inputs.app_name, inputs.environment)] }}
           APP_REGION: ${{ vars[format('{0}_{1}_REGION', inputs.app_name, inputs.environment)] }}
-          
-          # Secrets mapping
           APP_ACCESS_KEY: ${{ secrets[format('{0}_{1}_ACCESS_KEY', inputs.app_name, inputs.environment)] }}
           APP_SECRET_KEY: ${{ secrets[format('{0}_{1}_SECRET_KEY', inputs.app_name, inputs.environment)] }}
-
           APP_BASE_ENDPOINT: ${{ secrets[format('{0}_{1}_ENDPOINT', inputs.app_name, inputs.environment)] }}
           APP_BASE_REGION: ${{ vars[format('{0}_{1}_REGIONS', inputs.app_name, inputs.environment)] }}
-          
-          APP_UPPER: ${{ inputs.app_name }} # Pass app_name to the shell
+          APP_UPPER: ${{ inputs.app_name }}
         run: |
-          # Convert app_name input to uppercase (e.g., "app1" -> "APP1")
           APP_UPPER=$(echo "$APP_UPPER" | tr '[:lower:]' '[:upper:]')
 
-          # Export values to GitHub Actions environment for subsequent steps
           echo "BASE_URL=$APP_BASE_URL" >> $GITHUB_ENV
           echo "TARGET_HOST=$APP_TARGET_HOST" >> $GITHUB_ENV
           echo "AWS_REGION=$APP_REGION" >> $GITHUB_ENV
           echo "AWS_ACCESS_KEY_ID=$APP_ACCESS_KEY" >> $GITHUB_ENV
-          echo "AWS_SECRET_ACCESS_KEY=$APP_SECRET_KEY" >> $GITHUB_ENV # NOTE: GitHub automatically masks secrets in logs
-
+          echo "AWS_SECRET_ACCESS_KEY=$APP_SECRET_KEY" >> $GITHUB_ENV
           echo "APP_BASE_ENDPOINT=$APP_BASE_ENDPOINT" >> $GITHUB_ENV
           echo "APP_BASE_REGION=$APP_BASE_REGION" >> $GITHUB_ENV
 
@@ -204,13 +184,11 @@ jobs:
           echo "BASE_URL=$APP_BASE_URL"
           echo "TARGET_HOST=$APP_TARGET_HOST"
           echo "New REGION=$APP_BASE_REGION"
-          
           echo "✅ APP_BASE_ENDPOINT exists: $APP_BASE_ENDPOINT"
           
       - name: Check JMeter test plan exists
         if: ${{ matrix.runner_index <= fromJSON(inputs.runners_to_use) }}
         run: |
-          # Use environment variable APP_NAME set in previous step
           TEST_PLAN="${{ env.SCRIPTS_DIR }}/$APP_NAME/scripts/${{ inputs.jmx_file }}"
           if [ ! -f "$TEST_PLAN" ]; then
             echo "❌ Test plan $TEST_PLAN not found!"
@@ -223,11 +201,10 @@ jobs:
         run: |
           JMETER_HOME="$HOME/jmeter"
           mkdir -p "$JMETER_HOME"
-          # ... (JMeter installation logic from original code) ...
           curl -sL "https://downloads.apache.org/jmeter/binaries/apache-jmeter-${{ env.JMETER_VERSION }}.tgz" -o jmeter.tgz
           tar -xzf jmeter.tgz -C "$JMETER_HOME" --strip-components=1
           mkdir -p "$JMETER_HOME/lib/ext"
-          
+
           # Dummy plugin
           curl -L -o /tmp/jpgc-dummy-0.4.zip https://jmeter-plugins.org/files/packages/jpgc-dummy-0.4.zip
           unzip -o /tmp/jpgc-dummy-0.4.zip -d /tmp/dummy-plugin
@@ -250,10 +227,9 @@ jobs:
           "$JMETER_HOME/bin/PluginsManagerCMD.sh" install jpgc-mergeresults
 
       - name: Optional system monitoring
-        # Use 'inputs.monitor_system' and 'inputs.runners_to_use'
         if: ${{ inputs.monitor_system == 'true' && matrix.runner_index <= fromJSON(inputs.runners_to_use) }}
         run: |
-          sudo apt-get install -y sysstat
+          sudo apt-get install -y sysstat # Ensure mpstat is available
           mkdir -p "${{ env.REPORT_DIR }}"
           LOG_FILE="${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-system.log"
           echo "timestamp,cpu_user,cpu_system,cpu_idle,mem_used,mem_free" > $LOG_FILE
@@ -278,7 +254,6 @@ jobs:
           RESULT_DIR="${{ env.REPORT_DIR }}/${TEST_NAME}-runner-${{ matrix.runner_index }}-$TIMESTAMP"
           mkdir -p "$RESULT_DIR"
 
-          # Use inputs and previously exported environment variables
           "$HOME/jmeter/bin/jmeter" -n \
             -t "${{ env.SCRIPTS_DIR }}/$APP_NAME/scripts/${{ inputs.jmx_file }}" \
             -l "$RESULT_DIR/results-runner-${{ matrix.runner_index }}.jtl" \
@@ -300,7 +275,6 @@ jobs:
           echo "result_dir=$RESULT_DIR" >> $GITHUB_OUTPUT
 
       - name: Stop system monitoring
-        # Use 'inputs.monitor_system' and 'inputs.runners_to_use'
         if: ${{ inputs.monitor_system == 'true' && matrix.runner_index <= fromJSON(inputs.runners_to_use)}}
         run: |
           if [ -f /tmp/monitor_pid.txt ]; then
@@ -313,7 +287,6 @@ jobs:
         run: |
           ZIP_NAME="runner-${{ matrix.runner_index }}-results.zip"
           mkdir -p upload
-          # Use 'env.REPORT_DIR' and 'steps.run_test.outputs.result_dir'
           zip -r "upload/$ZIP_NAME" "${{ steps.run_test.outputs.result_dir }}" "${{ env.REPORT_DIR }}/runner-${{ matrix.runner_index }}-system.log" || true
           echo "Packaged runner ZIP including system log: upload/$ZIP_NAME"
 
@@ -322,33 +295,29 @@ jobs:
         with:
           name: jmeter-results-runner-${{ matrix.runner_index }}
           path: upload/*.zip
-          # Use 'inputs.cleanup_days'
           retention-days: ${{ inputs.cleanup_days }}
 
   # =========================================================
-  # Job 3: Aggregate runner JTLs
+  # Job 3: Aggregate runner JTLs (FULL LOGIC)
   # =========================================================
   aggregate-results:
-    # Use 'inputs.test_type' and 'inputs.runners_to_use'
     if: ${{ inputs.test_type == 'load' && fromJSON(inputs.runners_to_use) > 1 }}
     name: Aggregate JMeter Results
     needs: run-jmeter
     runs-on: ubuntu-latest
     steps:
-      # ... (Steps 1-10 for Java/JMeter setup, downloading, merging, report generation) ...
-      
       - name: Checkout repository
         uses: actions/checkout@v4
-        
+      
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-        
+      
       - name: Install OS dependencies
         run: sudo apt-get update && sudo apt-get install -y curl unzip
-        
+      
       - name: Install JMeter
         run: |
           set -e
@@ -359,23 +328,22 @@ jobs:
           mv "apache-jmeter-${JMETER_VERSION}" "$HOME/jmeter"
           echo "$HOME/jmeter/bin" >> $GITHUB_PATH
           echo "JMeter installed: $HOME/jmeter"
-          
+      
       - name: Download matrix artifacts (from runners)
         uses: actions/download-artifact@v4
         with:
           path: merged-results
-          
+      
       - name: Debug list merged-results contents
         run: |
           echo "===== merged-results top-level ====="
           ls -la merged-results || true
           echo "===== recursive listing ====="
           find merged-results -type f -maxdepth 5 -print || true
-          
+      
       - name: Unzip any runner zips (if present)
         shell: bash
         run: |
-          # ... (Unzip logic from original code) ...
           set -e
           mkdir -p merged-results/unzipped
           shopt -s globstar || true
@@ -392,12 +360,11 @@ jobs:
             echo "Contents of merged-results/unzipped/:"
             find merged-results/unzipped -type f -print | sed -n '1,200p' || true
           fi
-
+      
       - name: Try install CMDRunner + MergeResults (best-effort)
         id: install_plugins
         shell: bash
         run: |
-          # ... (Plugin installation logic from original code) ...
           set -e
           JMETER_HOME="$HOME/jmeter"
           echo "Attempting to install CMDRunner and MergeResults plugin (best-effort)..."
@@ -442,11 +409,10 @@ jobs:
           fi
           
         continue-on-error: true
-          
+      
       - name: Merge JTL files (MergeResults preferred, fallback to concat)
         shell: bash
         run: |
-          # ... (Merge logic from original code) ...
           set -euo pipefail
           mkdir -p final-results
           
@@ -536,7 +502,7 @@ jobs:
             done
             echo "✅ Fallback merged JTL created at final-results/merged.jtl"
           fi
-          
+      
       - name: Generate merged HTML report (if merged.jtl exists)
         shell: bash
         run: |
@@ -552,7 +518,7 @@ jobs:
           else
             echo "❌ No merged.jtl found; skipping HTML report generation."
           fi
-          
+      
       - name: Package consolidated artifacts
         run: |
           set -e
@@ -561,34 +527,30 @@ jobs:
           cp -r final-results final-upload/ || true
           zip -r consolidated-results.zip final-upload || true
           echo "Packaged consolidated-results.zip"
-          
+      
       - name: Upload consolidated artifact
         uses: actions/upload-artifact@v4
         with:
           name: consolidated-jmeter-results
           path: consolidated-results.zip
-          # Use 'inputs.cleanup_days'
           retention-days: ${{ inputs.cleanup_days }}
           
   # =========================================================
-  # Job 4: Cleanup old artifacts
+  # Job 4: Cleanup old artifacts (FULL LOGIC)
   # =========================================================
   cleanup-artifacts:
-    # Use 'inputs.test_type'
     if: ${{ inputs.test_type == 'cleanup' }}
     runs-on: ubuntu-latest
     steps:
-      # ... (Cleanup logic from original code) ...
       - name: Install GitHub CLI
         run: |
           sudo apt-get update
           sudo apt-get install -y gh
-          
+      
       - name: Authenticate GitHub CLI
         run: gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
-        
-      - name: Cleanup old runner report directories
-        # Use 'inputs.cleanup_days'
+      
+      - name: Cleanup old runner result directories
         run: |
           echo "🧹 Cleaning local runner report directories older than ${{ inputs.cleanup_days }} days..."
           if [ -d "${{ env.REPORT_DIR }}" ]; then
@@ -597,9 +559,8 @@ jobs:
           else
             echo "ℹ️ Local report directory not found; skipping local cleanup."
           fi
-          
+      
       - name: Cleanup old GitHub Actions artifacts
-        # Use 'inputs.cleanup_days'
         run: |
           echo "🧹 Cleaning GitHub Actions artifacts older than ${{ inputs.cleanup_days }} days..."
           gh api repos/${{ github.repository }}/actions/artifacts \
