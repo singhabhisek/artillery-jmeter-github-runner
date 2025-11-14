@@ -192,6 +192,10 @@ jobs:
           # Use secrets context to retrieve dynamic secrets
           APP_ACCESS_KEY: ${{ secrets[format('{0}_{1}_ACCESS_KEY', github.event.inputs.app_name, github.event.inputs.environment)] }}
           APP_SECRET_KEY: ${{ secrets[format('{0}_{1}_SECRET_KEY', github.event.inputs.app_name, github.event.inputs.environment)] }}
+
+          APP_BASE_ENDPOINT: ${{ vars[format('{0}_{1}_REGION', github.event.inputs.app_name, github.event.inputs.environment)] }}
+          APP_BASE_REGION: ${{ vars[format('{0}_{1}_BASE_URLENDPOINT', github.event.inputs.app_name, github.event.inputs.environment)] }}
+          
           APP_UPPER: ${{ github.event.inputs.app_name }} # Pass app_name to the shell
         run: |
           # Convert app_name input to uppercase (e.g., "app1" -> "APP1")
@@ -205,11 +209,16 @@ jobs:
           echo "AWS_ACCESS_KEY_ID=$APP_ACCESS_KEY" >> $GITHUB_ENV
           echo "AWS_SECRET_ACCESS_KEY=$APP_SECRET_KEY" >> $GITHUB_ENV # NOTE: GitHub automatically masks secrets in logs
 
+          echo "APP_BASE_ENDPOINT=$APP_BASE_ENDPOINT" >> $GITHUB_ENV
+          echo "APP_BASE_REGION=$APP_BASE_REGION" >> $GITHUB_ENV
+
           echo "✅ Environment variables mapped for $APP_UPPER"
           echo "BASE_URL=$APP_BASE_URL"
           echo "TARGET_HOST=$APP_TARGET_HOST"
-          echo "REGION=$APP_REGION"
-
+          echo "New REGION=$APP_BASE_REGION"
+          
+          echo "✅ APP_BASE_ENDPOINT exists: $APP_BASE_ENDPOINT"
+          
       - name: Check JMeter test plan exists
         if: ${{ matrix.runner_index <= fromJSON(github.event.inputs.runners_to_use) }}
         run: |
