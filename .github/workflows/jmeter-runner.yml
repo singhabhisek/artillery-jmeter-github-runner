@@ -194,7 +194,7 @@ jobs:
           APP_SECRET_KEY: ${{ secrets[format('{0}_{1}_SECRET_KEY', github.event.inputs.app_name, github.event.inputs.environment)] }}
 
           APP_BASE_ENDPOINT: ${{ vars[format('{0}_{1}_ENDPOINT', github.event.inputs.app_name, github.event.inputs.environment)] }}
-          APP_BASE_REGION: ${{ vars[format('{0}_{1}_REGION', github.event.inputs.app_name, github.event.inputs.environment)] }}
+          APP_BASE_REGION: ${{ vars[format('{0}_{1}_REGIONS', github.event.inputs.app_name, github.event.inputs.environment)] }}
           
           APP_UPPER: ${{ github.event.inputs.app_name }} # Pass app_name to the shell
         run: |
