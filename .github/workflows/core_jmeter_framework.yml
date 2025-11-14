@@ -54,9 +54,9 @@ on:
         type: string
         default: "false"
 
-    permissions:
-      actions: write
-      contents: read
+permissions:
+  actions: write
+  contents: read
 
 env:
   JMETER_VERSION: "5.6.3"
