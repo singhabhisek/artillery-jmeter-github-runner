@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Postman to Artillery Converter (Interactive)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script> 
+    <style>
+        /* --- 1. CSS Styles for a Clean UI --- */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            background-color: #f7f9fc;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+        h1 {
+            color: #1a237e;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #3f51b5;
+        }
+        #file-input {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .warning {
+            color: #d32f2f;
+            background-color: #ffcdd2;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 15px;
+            font-weight: 500;
+        }
+        /* Table Styles */
+        #request-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+		/* NEW: Wrapper to apply max-height and scrolling */
+        .request-table-wrapper {
+            max-height: 400px; 
+            overflow-y: auto; 
+            margin-top: 15px; /* Spacing from the toggle button */
+            border: 1px solid #ddd; /* Added border to visually contain the scroll area */
+            border-radius: 4px;
+        }
+        #request-table th, #request-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        #request-table th {
+            background-color: #f2f2f2;
+            color: #555;
+            font-size: 14px;
+        }
+        #request-table input[type="text"] {
+            width: 95%;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        /* Buttons */
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            justify-content: flex-end;
+        }
+        .button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.3s;
+        }
+        .primary-button {
+            background-color: #007bff;
+            color: white;
+        }
+        .primary-button:hover {
+            background-color: #0056b3;
+        }
+        .secondary-button {
+            background-color: #6c757d;
+            color: white;
+        }
+        .secondary-button:hover {
+            background-color: #5a6268;
+        }
+        .copy-button {
+            background-color: #4caf50;
+            color: white;
+            margin-left: 10px;
+        }
+        .copy-button:hover {
+            background-color: #43a047;
+        }
+        /* Output */
+        #output-container {
+            display: none; /* Hidden until a file is loaded */
+        }
+        #output-yaml, #output-json {
+            width: 100%;
+            min-height: 200px;
+            padding: 15px;
+            background-color: #f4f6f9;
+            border: 1px solid #cfd8dc;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 14px;
+            white-space: pre;
+            overflow: auto;
+            margin-top: 10px;
+        }
+        .download-options {
+            margin-top: 15px;
+            display: flex;
+            gap: 20px;
+        }
+        .download-options label {
+            display: inline-flex;
+            align-items: center;
+            font-weight: normal;
+            margin-bottom: 0;
+            color: #333;
+        }
+        .download-options input[type="radio"] {
+            margin-right: 5px;
+        }
+        .output-box {
+            margin-top: 20px;
+        }
+        .output-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        /* New button for JSON toggle */
+        #toggle-json-button {
+            margin-left: 10px;
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.5rem;
+            color: #007bff;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading-overlay">
+        Processing requests and zipping... Please wait.
+    </div>
+
+    <div class="container">
+        <h1>🚀 Postman Collection to Artillery Converter</h1>
+        <div class="section">
+            <label for="file-input">1. Upload Postman Collection JSON File (.json)</label>
+            <input type="file" id="file-input" accept=".json">
+            <p class="warning">
+                **Security Warning:** All processing is done **locally** in your browser. No data leaves your machine.
+            </p>
+        </div>
+
+		
+        <div id="output-container" class="section">
+            
+			
+			<h3 style="margin-top: 25px; color: #3f51b5;">2. JSON Body Format for Artillery Requests</h3>
+            <div class="download-options">
+                <label>
+                    <input type="radio" name="json-body-mode" value="raw_data" checked>
+                    Use **body: |** (Preserves original multi-line/raw string json content - Default)
+                </label>
+                <label>
+                    <input type="radio" name="json-body-mode" value="structured_json">
+                    Use **json: {}** (Formats content as a YAML-nested JSON object)
+                </label>
+            </div>
+            <br/>
+			
+			<h3 style="margin-top: 25px; color: #3f51b5;">3. Consolidation of Artillery Requests</h3>
+            <div class="download-options">
+                <label>
+                    <input type="radio" name="download-mode" value="single" checked>
+                    Generate a **Single YAML** file for all selected requests (Preview Mode).
+                </label>
+                <label>
+                    <input type="radio" name="download-mode" value="multiple">
+                    Generate **Individual YAML** files (ZIP for >10 files).
+                </label>
+            </div>
+			
+			<br/>
+			<h2>4. Select and Customize Operations</h2>
+
+            <button class="button secondary-button" onclick="toggleSelection()">Toggle All/None</button>
+            
+            <div class="request-table-wrapper">
+                <table id="request-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%;">Select</th>
+                            <th style="width: 10%;">Method</th>
+                            <th style="width: 40%;">Original Name</th>
+                            <th style="width: 45%;">Custom Flow Name (Artillery Report Name)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        </tbody>
+                </table>
+            </div>
+            
+            
+
+            <div class="button-group">
+                <button class="button secondary-button" onclick="generatePreview()">Generate Preview</button>
+                <button class="button primary-button" onclick="handleDownload()">Download YAML(s)</button>
+            </div>
+            <div class="output-box">
+                <div class="output-header">
+                    <label>Preview of Generated YAML (Preserves Original Request Body)</label>
+                    <button class="button copy-button" onclick="copyOutput('output-yaml')">Copy YAML</button>
+                </div>
+                <pre id="output-yaml">
+                    Select requests and click 'Generate Preview' to see the final output.
+                </pre>
+            </div>
+            
+            <div class="output-box" id="json-output-container" style="display: none;">
+                <div class="output-header">
+                    <label>Preview of Generated JSON Structure (before YAML conversion)</label>
+                    <button class="button copy-button" onclick="copyOutput('output-json')">Copy JSON</button>
+                </div>
+                <pre id="output-json">
+                    Select requests and click 'Generate Preview' to see the intermediate JSON structure.
+                </pre>
+				<button class="button secondary-button" id="toggle-json-button" onclick="toggleJsonPreview()">Show JSON Preview</button>
+			</div>
+            
+             </div>
+    </div>
+
+    <script>
+        /* --- 2. JavaScript Conversion Logic (Final Version with Sensitive Header Detection) --- */
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('file-input').addEventListener('change', handleFileUpload);
+        });
+        
+        // =========================================================================
+        // 🚨 CONFIGURATION: ADD YOUR SENSITIVE HEADER KEYS HERE 🚨
+        // Keys are matched case-insensitively.
+        // =========================================================================
+        const SENSITIVE_HEADER_KEYS = [
+            'x-api-key', 
+            'client-key', 
+            'api-key', 
+            'secret', 
+            'access-token'
+        ];
+        // =========================================================================
+        
+        const environmentVariables = new Set();
+        const globalAuthVariables = {};
+        const collectionVariables = {};
+        let awsSigV4Used = false;
+        const TARGET_ENV_VAR = 'BASE_URL';
+        let allRequests = []; // Stores structured data for all requests
+
+        // Global variables to cache the single file output for the Download button
+        let lastGeneratedSingleYaml = '';
+        let lastGeneratedSingleJson = '';
+
+        /**
+         * Utility to convert a JS object to a clean, standard YAML string.
+         * Enforces quoting on all non-variable strings for safety and consistency.
+         */
+        function toYAML(obj, indent = 0) {
+            let yaml = '';
+            const spaces = '  '.repeat(indent);
+
+            for (const key in obj) {
+                if (obj.hasOwnProperty(key)) {
+                    const value = obj[key];
+                    const safeKey = key.includes(' ') ? `'${key}'` : key;
+
+                    if (Array.isArray(value)) {
+                        
+                        // Standard Array Handling
+                        yaml += `${spaces}${safeKey}:\n`;
+                        value.forEach(item => {
+                            if (typeof item === 'object' && item !== null) {
+                                // --- MODIFIED LOGIC FOR ARRAY OF MAPS (scenarios, flow, capture, ensure, etc.) ---
+                                
+                                // Generate the YAML for the object, indented by one level more than the array's key
+                                // e.g., if indent is 0, nestedYaml lines start with '  '
+                                const nestedYaml = toYAML(item, indent + 1); 
+                                
+                                // Split into lines
+                                const lines = nestedYaml.split('\n').filter(line => line.trim() !== '');
+                                if (lines.length === 0) return; // Skip empty objects
+
+                                // 1. Get the first line's content, trim its leading spaces (which is '  ')
+                                // e.g., '  name: "..."' becomes 'name: "..."'
+                                const firstLineContent = lines[0].trimStart(); 
+                                
+                                // 2. Output the list item with the hyphen, followed by the first line's content
+                                // e.g., '- name: "..."'
+                                yaml += `${spaces}- ${firstLineContent}\n`;
+
+                                // 3. Output the rest of the lines, which are already correctly indented 
+                                // (e.g., '  flow:' is correct alignment under the hyphen)
+                                for (let i = 1; i < lines.length; i++) {
+                                    yaml += `${lines[i]}\n`;
+                                }
+                                // --- END MODIFIED LOGIC ---
+
+                            } else {
+                                // Array item is a primitive or simple string
+                                // Always quote array items for safety
+                                yaml += `${spaces}- ${JSON.stringify(item)}\n`;
+                            }
+                        });
+                    } else if (typeof value === 'object' && value !== null && !(value instanceof String)) {
+                        yaml += `${spaces}${safeKey}:\n${toYAML(value, indent + 1)}`;
+                    } else {
+                        
+                        // Rule A: Handle Custom Comment Keys (e.g., #beforeRequest: beforeJson)
+                        if (key.startsWith('#')) {
+                             // Print the value (which is the full commented line) directly with indentation
+                             yaml += `${spaces}${value}\n`;
+                             continue;
+                        }
+
+                        // Rule B: Handle generic comment keys (legacy/header comments)
+                        if (key.startsWith('__comment__')) {
+                             if (typeof value === 'string') {
+                                 // Add an initial newline for separation, then join and indent all lines of the comment block
+                                 const commentBlock = value.split('\n').map(line => line.trimStart()).join(`\n${spaces}# `);
+                                 yaml += `\n${spaces}# ${commentBlock}\n`;
+                             } else {
+                                 // Single line comment
+                                 yaml += `\n${spaces}# ${value}\n`;
+                             }
+                             continue;
+                        }
+                        
+                        // Rule C: Handle multi-line string content (like the 'data' field) as a literal block
+                        if (typeof value === 'string' && value.includes('\n') && safeKey === 'data') {
+                            yaml += `${spaces}body: |\n`;
+                            value.split('\n').forEach(line => {
+                                // Indent the body lines one extra level (two spaces)
+                                yaml += `${spaces}  ${line}\n`; 
+                            });
+                            continue;
+                        }
+
+
+                        let finalValue;
+                        
+                        // Rule D: Artillery Variable/Expression (must be unquoted)
+                        if (typeof value === 'string' && (value.includes('{{ $processEnvironment.') || value.includes('{{')) && !value.includes('\n') && !value.includes('"')) {
+                            finalValue = value;
+                        } 
+                        // Rule E: All other values (strings with spaces, numbers, booleans, etc.) are safely quoted using JSON.stringify
+                        else {
+                            finalValue = JSON.stringify(value);
+                        }
+                        
+                        // Print final value: quotes are only present if applied by JSON.stringify (Rule E)
+                        yaml += `${spaces}${safeKey}: ${finalValue}\n`; 
+                    }
+                }
+            }
+            return yaml;
+        }
+
+
+        /**
+         * Converts a Postman variable name to an Artillery environment variable name.
+         */
+        function getEnvVarName(postmanVar) {
+            // Converts to ALL_CAPS_WITH_UNDERSCORES
+            return postmanVar.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+        }
+
+        /**
+         * Creates the Artillery $processEnvironment reference string.
+         */
+        function createEnvRef(envVarName) {
+            return `{{ $processEnvironment.${envVarName} }}`;
+        }
+
+        /**
+         * Main file upload handler.
+         */
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const collection = JSON.parse(e.target.result);
+                    // Reset global state
+                    environmentVariables.clear();
+                    Object.keys(globalAuthVariables).forEach(key => delete globalAuthVariables[key]);
+                    Object.keys(collectionVariables).forEach(key => delete collectionVariables[key]);
+                    awsSigV4Used = false;
+                    allRequests = [];
+                    lastGeneratedSingleYaml = '';
+                    lastGeneratedSingleJson = '';
+
+
+                    // Process collection structure and variables
+                    processCollectionStructure(collection);
+                    
+                    // Render the interactive table
+                    renderRequestTable(collection);
+                    
+                    document.getElementById('output-container').style.display = 'block';
+
+                    // Clear preview areas
+                    document.getElementById('output-yaml').textContent = "Select requests and click 'Generate Preview' to see the final output.";
+                    document.getElementById('output-json').textContent = "Select requests and click 'Generate Preview' to see the intermediate JSON structure.";
+
+
+                } catch (error) {
+                    document.getElementById('output-yaml').textContent = `Error parsing file: ${error.message}. Please ensure it is a valid Postman Collection JSON file.`;
+                    console.error(error);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        /**
+         * Processes Postman variables and extracts request data.
+         */
+        function processCollectionStructure(collection) {
+            // Step 1: Process Postman Collection Variables
+            if (collection.variable && Array.isArray(collection.variable)) {
+                collection.variable.forEach(v => {
+                    if (v.value) {
+                        collectionVariables[v.key] = v.value;
+                    }
+                });
+            }
+
+            // Step 2: Extract Collection-level Auth for Inheritance
+            const collectionAuth = collection.auth || null;
+
+            // Step 3: Recursively extract requests
+            function extractRequests(item, path = '') {
+                if (item.request) {
+                    allRequests.push({
+                        postmanItem: item,
+                        inheritedAuth: collectionAuth,
+                        is_selected: true, // Default to selected
+                        customName: item.name
+                    });
+                }
+
+                if (item.item) {
+                    item.item.forEach(subItem => extractRequests(subItem, path));
+                }
+            }
+            collection.item.forEach(item => extractRequests(item));
+        }
+
+        /**
+         * Renders the interactive HTML table for request selection and naming.
+         */
+        function renderRequestTable(collection) {
+            const tbody = document.querySelector('#request-table tbody');
+            tbody.innerHTML = '';
+            
+            if (allRequests.length === 0) {
+                 tbody.innerHTML = '<tr><td colspan="4">No requests found in the collection.</td></tr>';
+                 return;
+            }
+
+            allRequests.forEach((req, index) => {
+                const tr = document.createElement('tr');
+                const originalName = req.postmanItem.name;
+                const method = req.postmanItem.request.method;
+                
+                tr.dataset.index = index;
+
+                tr.innerHTML = `
+                    <td><input type="checkbox" checked onchange="updateRequestSelection(${index})"></td>
+                    <td>${method}</td>
+                    <td>${originalName}</td>
+                    <td><input type="text" value="${originalName}" onkeyup="updateRequestName(${index}, this.value)"></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+        
+        /**
+         * Updates the selection state in the global allRequests array.
+         */
+        function updateRequestSelection(index) {
+            const checkbox = document.querySelector(`#request-table tbody tr[data-index="${index}"] input[type="checkbox"]`);
+            allRequests[index].is_selected = checkbox.checked;
+        }
+        
+        /**
+         * Updates the custom name in the global allRequests array.
+         */
+        function updateRequestName(index, newName) {
+            allRequests[index].customName = newName;
+        }
+        
+        /**
+         * Toggles the selection status of all requests.
+         */
+        function toggleSelection() {
+            const allChecked = allRequests.every(req => req.is_selected);
+            const newState = !allChecked;
+            
+            allRequests.forEach(req => req.is_selected = newState);
+            
+            const checkboxes = document.querySelectorAll('#request-table tbody input[type="checkbox"]');
+            checkboxes.forEach(cb => cb.checked = newState); 
+        }
+
+        /**
+         * Toggles the visibility of the JSON preview container.
+         */
+        function toggleJsonPreview() {
+            const container = document.getElementById('json-output-container');
+            const button = document.getElementById('toggle-json-button');
+            
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                button.textContent = 'Hide JSON Preview';
+            } else {
+                container.style.display = 'none';
+                button.textContent = 'Show JSON Preview';
+            }
+        }
+
+
+        // --- Core Generation Logic ---
+        
+        /**
+         * Generates the single YAML and JSON for preview and caches them.
+         */
+        function generatePreview() {
+            const selectedRequests = allRequests.filter(req => req.is_selected);
+            if (selectedRequests.length === 0) {
+                alert('Please select at least one operation to generate.');
+                return;
+            }
+            
+            const { yaml: fullYaml, json: fullJson } = generateSingleYaml(selectedRequests);
+            
+            lastGeneratedSingleYaml = fullYaml;
+            lastGeneratedSingleJson = fullJson;
+
+            document.getElementById('output-yaml').textContent = fullYaml;
+            document.getElementById('output-json').textContent = fullJson;
+        }
+
+        /**
+         * Generates a single YAML file containing all selected requests.
+         */
+        function generateSingleYaml(selectedRequests) {
+            const scenarios = [];
+            
+            // Reset state specific to this conversion run
+            environmentVariables.clear();
+            Object.keys(globalAuthVariables).forEach(key => delete globalAuthVariables[key]);
+            awsSigV4Used = false;
+            
+            selectedRequests.forEach(reqData => {
+                 const scenario = convertRequestToScenario(reqData.postmanItem, reqData.inheritedAuth, reqData.customName);
+                 scenarios.push(scenario);
+            });
+            
+            const config = generateArtilleryConfig();
+            
+            const artilleryConfig = { config: config, scenarios: scenarios };
+            const header = generateYamlHeader(selectedRequests.length);
+
+            return {
+                yaml: header + toYAML(artilleryConfig),
+                json: JSON.stringify(artilleryConfig, null, 2)
+            };
+        }
+        
+        /**
+         * Handles the download action based on mode and file count threshold.
+         */
+        function handleDownload() {
+            const selectedRequests = allRequests.filter(req => req.is_selected);
+            if (selectedRequests.length === 0) {
+                alert('Please select at least one operation to download.');
+                return;
+            }
+
+            const downloadMode = document.querySelector('input[name="download-mode"]:checked').value;
+            const isOverThreshold = selectedRequests.length > 10;
+            
+            // 1. Single File Download (uses cached preview)
+            if (downloadMode === 'single') {
+                if (!lastGeneratedSingleYaml) {
+                    generatePreview();
+                }
+                downloadFile(lastGeneratedSingleYaml, 'artillery_load_test.yml', 'text/yaml');
+            } 
+            // 2. Multi File Download (handles ZIP/Individual logic)
+            else { 
+                if (isOverThreshold) {
+                    downloadAsZip(selectedRequests);
+                } else {
+                    downloadMultipleIndividual(selectedRequests);
+                }
+            }
+        }
+
+        /**
+         * Downloads multiple individual files one by one.
+         */
+        function downloadMultipleIndividual(selectedRequests) {
+            alert(`Downloading ${selectedRequests.length} individual files one by one.`);
+            selectedRequests.forEach((reqData, index) => {
+                 const { yaml: fullYaml } = generateIndividualYaml(reqData);
+                 const safeFileName = reqData.customName.replace(/[^a-zA-Z0-9_]/g, '_') || `request_${index}`;
+                 downloadFile(fullYaml, `${safeFileName}.yml`, 'text/yaml');
+            });
+        }
+        
+        /**
+         * Generates and downloads a ZIP file containing all individual YAMLs.
+         */
+        function downloadAsZip(selectedRequests) {
+            document.getElementById('loading-overlay').style.display = 'flex';
+            const zip = new JSZip();
+
+            selectedRequests.forEach((reqData, index) => {
+                 const { yaml: fullYaml } = generateIndividualYaml(reqData);
+                 const safeFileName = reqData.customName.replace(/[^a-zA-Z0-9_]/g, '_') || `request_${index}`;
+                 zip.file(`${safeFileName}.yml`, fullYaml);
+            });
+
+            zip.generateAsync({ type: 'blob' })
+               .then(content => {
+                   document.getElementById('loading-overlay').style.display = 'none';
+                   const a = document.createElement('a');
+                   a.href = URL.createObjectURL(content);
+                   a.download = 'artillery_scenarios.zip';
+                   document.body.appendChild(a);
+                   a.click();
+                   document.body.removeChild(a);
+                   URL.revokeObjectURL(a.href);
+                   alert(`Successfully generated and downloaded a ZIP archive with ${selectedRequests.length} YAML files.`);
+               })
+               .catch(error => {
+                   document.getElementById('loading-overlay').style.display = 'none';
+                   console.error('Zipping failed:', error);
+                   alert('Failed to generate ZIP file.');
+               });
+        }
+        
+        /**
+         * Generates a single YAML file for one request (used for multi-file mode).
+         */
+        function generateIndividualYaml(reqData) {
+            // Reset state specific to this conversion run for individual files
+            environmentVariables.clear();
+            Object.keys(globalAuthVariables).forEach(key => delete globalAuthVariables[key]);
+            awsSigV4Used = false;
+
+            const scenario = convertRequestToScenario(reqData.postmanItem, reqData.inheritedAuth, reqData.customName);
+            const config = generateArtilleryConfig();
+            const artilleryConfig = { config: config, scenarios: [scenario] };
+            const header = generateYamlHeader(1);
+            
+            return {
+                yaml: header + toYAML(artilleryConfig),
+                json: JSON.stringify(artilleryConfig, null, 2)
+            };
+        }
+        
+        /**
+         * Generates the common Artillery config block.
+         */
+        function generateArtilleryConfig() {
+            const defaults = {
+                headers: {
+                    'User-Agent': 'Artillery Load Test Client'
+                }
+            };
+            
+            const globalVariables = {
+                // Ensure all dynamically created environment variables are included here
+                ...collectionVariables,
+                ...globalAuthVariables
+            };
+
+            const config = {
+                target: createEnvRef(TARGET_ENV_VAR),
+                phases: [
+                    // Ensure quotes around phase names
+                    { duration: 30, arrivalRate: 5, name: 'Warm-up' }, 
+                    { duration: 120, arrivalRate: 20, rampTo: 50, name: 'Load Test' }
+                ],
+                defaults: defaults,
+                // --- INTEGRATED GLOBAL CONFIGS ---
+                plugins: {
+                    'metrics-by-endpoint': {
+                        useOnlyRequestNames: true
+                    }
+                },
+                ensure: [
+                    { "http.response_time.p99": 500 },
+                    { "http.response_code.4xx": { max_error_rate: 0.01 } },
+                    { "http.response_code.5xx": { max_error_rate: 0.01 } }
+                ],
+                // Placeholder CSV payload block (can be removed if no CSV is used)
+                payload: {
+                    path: "../data/user_city.csv",
+                    fields: [ "name", "password" ],
+                    order: "sequence",
+                    skipHeader: true
+                }
+            };
+            
+            if (Object.keys(globalVariables).length > 0) {
+                 config.variables = globalVariables;
+            }
+
+            if (awsSigV4Used) {
+                config.processor = './processors.js';
+            }
+            return config;
+        }
+
+        /**
+         * Generates the header comment block.
+         */
+        function generateYamlHeader(numRequests) {
+            let variablesList = Array.from(environmentVariables)
+                .filter(v => v !== TARGET_ENV_VAR)
+                .sort()
+                .map(v => `## - ${v}`).join('\n');
+            
+            if (awsSigV4Used) {
+                variablesList += '\n## - AWS_ACCESS_KEY_ID (Required for AWS SigV4 processor)';
+                variablesList += '\n## - AWS_SECRET_ACCESS_KEY (Required for AWS SigV4 processor)';
+            }
+            if (variablesList.trim()) {
+                variablesList = '\n' + variablesList;
+            }
+
+            const header = `## ----------------------------------------------------
+## GENERATED ARTILLERY SCRIPT
+##
+## **SECURITY NOTICE:** Hardcoded secrets/tokens in headers and auth blocks have been replaced with
+## secure placeholders referenced in config.variables (which point to system environment variables).
+##
+## **TOTAL REQUESTS:** ${numRequests}
+##
+## **REQUIRED SYSTEM ENVIRONMENT VARIABLES (Set these in your shell/CI/CD environment):**
+## - ${TARGET_ENV_VAR} (For config.target)
+${variablesList}
+##
+## **COLLECTION-LEVEL VARIABLES (Static defaults):**
+${Object.keys(collectionVariables).length > 0 ? Object.keys(collectionVariables).map(v => `## - ${v} (Default: ${collectionVariables[v]})`).join('\n') : '## - None'}
+##
+## ----------------------------------------------------\n\n`;
+            return header;
+        }
+        
+        /**
+         * Downloads the generated file.
+         */
+        function downloadFile(content, fileName, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        /**
+         * Copies the generated content to the clipboard.
+         */
+        function copyOutput(elementId) {
+            const outputElement = document.getElementById(elementId);
+            if (outputElement.textContent.trim().includes('Select requests and click')) {
+                alert('Please generate a script first.');
+                return;
+            }
+
+            navigator.clipboard.writeText(outputElement.textContent)
+                .then(() => {
+                    alert(`${elementId.toUpperCase().includes('JSON') ? 'JSON' : 'YAML'} copied to clipboard!`);
+                })
+                .catch(err => {
+                    console.error('Failed to copy text: ', err);
+                    alert('Failed to copy text. Please manually select and copy the content.');
+                });
+        }
+        
+        /**
+         * Converts a single Postman request into an Artillery scenario.
+         */
+        function convertRequestToScenario(postmanItem, inheritedAuth = null, customName) {
+            const request = postmanItem.request;
+            const requestHeaders = {}; // Headers excluding Content-Type
+            let url = request.url.raw || '';
+            const artilleryFlow = {};
+            
+            // Helper function to apply Postman variable replacement to Artillery format
+            const applyVariableReplacement = (value) => {
+                // Ensure value is a string before replacement
+                if (typeof value !== 'string') return value;
+
+                return value.replace(/\{\{(\w+)\}\}/g, (match, p1) => {
+                    if (collectionVariables.hasOwnProperty(p1)) {
+                        return `{{${p1}}}`; // Collection variable
+                    }
+                    const envVar = getEnvVarName(p1);
+                    environmentVariables.add(envVar);
+                    return createEnvRef(envVar); // Environment variable
+                });
+            };
+
+            // 1. Postman Variable Conversion (URL)
+            url = applyVariableReplacement(url);
+
+
+            // 2. URL and Path Conversion
+            let path = url;
+            try {
+                const urlToParse = url.startsWith('http') ? url : 'http://placeholder' + url; 
+                const urlObj = new URL(urlToParse);
+                path = urlObj.pathname + urlObj.search;
+                
+                if (path === '/' && url.includes('{{')) {
+                    path = url;
+                }
+                
+                // Templating the URL for CSV variables:
+                path = path.replace(/\{\{(\w+)\}\}/g, '{{ $1 }}');
+                
+            } catch (e) {}
+
+            // 3. Scenario Name & Flow Item Name
+            const scenarioName = customName.replace(/[^a-zA-Z0-9]/g, '_');
+            artilleryFlow.name = customName;
+
+
+            // 4. Authentication Handling
+            let authToProcess = request.auth;
+            if (!authToProcess || (authToProcess.type === 'inherit' && inheritedAuth)) {
+                authToProcess = inheritedAuth;
+            }
+
+            if (authToProcess) {
+                const authType = authToProcess.type;
+                const params = authToProcess[authType];
+
+                switch (authType) {
+                    case 'bearer':
+                        const tokenParam = params ? params.find(p => p.key === 'token') : null;
+                        const tokenValue = tokenParam ? tokenParam.value : null;
+
+                        if (tokenValue) {
+                            // The env variable name in the OS
+                            const tokenEnvName = getEnvVarName(tokenValue.replace(/\{\{(\w+)\}\}/g, '$1') || 'BEARER_TOKEN_ENV');
+                            // The variable name used in config.variables
+                            const bearerVarName = 'BEARER_TOKEN'; 
+
+                            environmentVariables.add(tokenEnvName);
+                            
+                            if (!globalAuthVariables[bearerVarName]) {
+                                globalAuthVariables[bearerVarName] = `Bearer {{ $processEnvironment.${tokenEnvName} }}`;
+                            }
+                            
+                            // Reference the global variable in the header
+                            requestHeaders['Authorization'] = `{{${bearerVarName}}}`;
+                        }
+                        break;
+                    case 'basic':
+                        const userParam = params ? params.find(p => p.key === 'username') : null;
+                        const passParam = params ? params.find(p => p.key === 'password') : null;
+                        const userValue = userParam ? userParam.value : null;
+                        const passValue = passParam ? passParam.value : null;
+
+                        if (userValue && passValue) {
+                            // Environment variables in the OS
+                            const userEnvName = getEnvVarName(userValue.replace(/\{\{(\w+)\}\}/g, '$1') || 'BASIC_AUTH_USERNAME');
+                            const passEnvName = getEnvVarName(passValue.replace(/\{\{(\w+)\}\}/g, '$1') || 'BASIC_AUTH_PASSWORD');
+                            
+                            // Variables used in config.variables
+                            const userVarName = 'BASIC_USER';
+                            const passVarName = 'BASIC_PASS';
+
+                            environmentVariables.add(userEnvName);
+                            environmentVariables.add(passEnvName);
+
+                            if (!globalAuthVariables[userVarName]) {
+                                globalAuthVariables[userVarName] = createEnvRef(userEnvName);
+                            }
+                            if (!globalAuthVariables[passVarName]) {
+                                globalAuthVariables[passVarName] = createEnvRef(passEnvName);
+                            }
+
+                            // Reference the global variables in the flow
+                            artilleryFlow.auth = {
+                                user: `{{${userVarName}}}`,
+                                password: `{{${passVarName}}}`
+                            };
+                        }
+                        break;
+
+                    case 'apikey':
+                        // Find the parameter that holds the HEADER NAME (Postman key: 'key')
+                        const keyNameParam = params ? params.find(p => p.key === 'key') : null;
+                        // Find the parameter that holds the SECRET VALUE (Postman key: 'value')
+                        const secretValueParam = params ? params.find(p => p.key === 'value') : null;
+                        // Find the location ('in'), default to 'header' if missing
+                        const inParam = params ? params.find(p => p.key === 'in') : null;
+                        
+                        // Proceed only if both header key name and secret value are found (in is optional)
+                        if (keyNameParam && secretValueParam) {
+                            
+                            const keyName = keyNameParam.value; 
+                            const location = inParam ? inParam.value : 'header'; // Default to header
+
+                            // 1. Environment variable in the OS (derived from the header key name)
+                            const apiKeyEnvName = getEnvVarName(keyName + '_ENV');
+                            // 2. Variable name used in config.variables (derived from the header key name)
+                            const apiKeyVarName = getEnvVarName(keyName + '_VAR'); 
+
+                            environmentVariables.add(apiKeyEnvName);
+                            
+                            if (!globalAuthVariables[apiKeyVarName]) {
+                                // Define the global Artillery variable pointing to the OS environment variable
+                                globalAuthVariables[apiKeyVarName] = createEnvRef(apiKeyEnvName);
+                            }
+
+                            if (location === 'header') {
+                                // Reference the global variable in the header
+                                requestHeaders[keyName] = `{{${apiKeyVarName}}}`; 
+                            } else if (location === 'query') {
+                                // For API Key in query, we define the variable but rely on the user to use it in the URL path.
+                                // We also add a comment as a reminder.
+                                requestHeaders[keyName] = `{{${apiKeyVarName}}}`; 
+                                artilleryFlow['__comment__apikey_in_query'] = `API Key '${keyName}' is set to be in query. Please ensure the URL (${path}) uses '{{${apiKeyVarName}}}'. The key is still defined in config.variables.`;
+                            }
+                        }
+                        break;
+
+                    case 'awsv4':
+                        awsSigV4Used = true;
+                        artilleryFlow.processor = 'signAwsRequest';
+                        artilleryFlow['__comment__aws_sigv4'] = 'AWS SigV4 requires a processor function (in ./processors.js) and AWS ENV vars.';
+                        break;
+                }
+            }
+            
+            // 5. Headers
+            let contentType = null;
+            if (request.header) {
+                request.header.forEach(h => {
+                    const headerValue = applyVariableReplacement(h.value);
+                    const headerKeyLower = h.key.toLowerCase();
+                    let finalValue = headerValue;
+                    
+                    // --- SENSITIVE HEADER TOKENIZATION LOGIC ---
+                    const isSensitive = SENSITIVE_HEADER_KEYS.some(sensitiveKey => sensitiveKey.toLowerCase() === headerKeyLower);
+                    
+                    // If it's sensitive AND its value does NOT already look like a variable (i.e., it's a hardcoded secret)
+                    if (isSensitive && !headerValue.includes('{{')) {
+                        // 1. Create a dynamic environment variable name based on the header key (OS env var name)
+                        const envVarName = getEnvVarName(h.key + '_ENV');
+                        // 2. Create the variable name for use in config.variables
+                        const artilleryVarName = getEnvVarName(h.key + '_VAR');
+                        
+                        // 3. Add the OS environment variable name to the required list
+                        environmentVariables.add(envVarName);
+                        
+                        // 4. Define the variable in the global config (if not already defined)
+                        if (!globalAuthVariables[artilleryVarName]) {
+                            globalAuthVariables[artilleryVarName] = createEnvRef(envVarName);
+                        }
+                        
+                        // 5. Set the header value to reference the global config variable
+                        finalValue = `{{${artilleryVarName}}}`;
+                    }
+                    // --- END SENSITIVE HEADER TOKENIZATION LOGIC ---
+
+                    // Only set headers that haven't been set by the Auth logic (like 'Authorization' or API Key)
+                    if (requestHeaders[h.key] === undefined) {
+                         requestHeaders[h.key] = finalValue; 
+                    }
+
+                    if (h.key.toLowerCase() === 'content-type') {
+                        contentType = finalValue;
+                    }
+                });
+            }
+
+            // --- HEADER FINALIZATION AND CLEANUP ---
+            const finalHeaders = {
+                ...requestHeaders, 
+            };
+            
+            // Ensure Content-Type is available for body processing if it was implicitly set by Postman or is needed
+            if (!contentType && request.body && (request.body.mode === 'raw' || request.body.mode === 'urlencoded')) {
+                 contentType = request.body.raw ? 'application/json' : 'application/x-www-form-urlencoded';
+                 finalHeaders['Content-Type'] = contentType;
+            }
+            
+            // Only include the headers block if there are any non-Auth/non-Content-Type headers left
+            if (Object.keys(finalHeaders).length > 0) {
+                 artilleryFlow.headers = finalHeaders;
+            }
+            // --- END HEADER FINALIZATION AND CLEANUP ---
+
+
+            // 6. Request Body Handling - Preserve Original Content
+            if (request.body) {
+                const mode = request.body.mode;
+                
+                // --- A. Handle Form Data/URL Encoded ---
+                if (mode === 'urlencoded' || mode === 'formdata') {
+                    const formDataArray = request.body[mode];
+                    const artilleryForm = {};
+                    
+                    if (formDataArray && Array.isArray(formDataArray)) {
+                        formDataArray.forEach(p => {
+                            if (p.key && p.value) { // Ensure key and value exist
+                                artilleryForm[p.key] = applyVariableReplacement(p.value);
+                            }
+                        });
+                    }
+
+                    artilleryFlow.form = artilleryForm;
+                } 
+                // --- B. Handle Raw Data (JSON, XML, Text) - MODIFIED LOGIC HERE ---
+                else if (mode === 'raw' && request.body.raw && request.body.raw.trim().length > 0) {
+                    const jsonBodyMode = document.querySelector('input[name="json-body-mode"]:checked').value;
+                    let rawBody = applyVariableReplacement(request.body.raw);
+
+                    if (jsonBodyMode === 'structured_json') {
+                        // Option 1: Output as structured JSON object (using 'json: {}')
+                        try {
+                            const jsonObject = JSON.parse(rawBody);
+                            
+                            // Use 'json' key for structured body
+                            artilleryFlow.json = jsonObject;
+
+                            // If we successfully parsed it, we can remove Content-Type if it was implicitly set
+                            if (finalHeaders['Content-Type'] && finalHeaders['Content-Type'].toLowerCase().includes('json')) {
+                                delete finalHeaders['Content-Type'];
+                            }
+                        } catch (e) {
+                            // Fallback: If parsing fails (e.g., it's XML or invalid JSON), use 'data'
+                            artilleryFlow.data = rawBody;
+                            artilleryFlow['__comment__json_parse_failed'] = 'Content could not be parsed as JSON for `json: {}` format. Falling back to `data: |` literal block.';
+                        }
+                    } else {
+                        // Option 2 (Default/Existing): Output as a raw string block (data: |)
+                        artilleryFlow.data = rawBody;
+                    }
+                }
+            }
+
+
+            // 7. Build the final Artillery Request object
+            const methodKey = request.method.toLowerCase();
+
+            const artilleryRequest = {
+                url: path,
+                ...artilleryFlow,
+                
+                // --- INTEGRATED HOOKS (Commented out) ---
+                '#beforeRequest': '#beforeRequest: "beforeJson"',
+                '#afterResponse': '#afterResponse: "afterJson"', 
+
+                // --- INTEGRATED CAPTURE AND EXPECT ---
+                expect: [
+                    { statusCode: 200 }
+                ],
+                capture: [
+                    { json: "$", as: "response" }
+                ],
+                
+                // --- INTEGRATED LOG (Commented out) ---
+                '#log': '#log: "Response: {{ session_id }} for user {{ user_id }}"',
+            };
+
+
+            // 8. Assemble the Scenario
+            const finalScenario = {
+                name: customName,
+                flow: [
+                    { [methodKey]: artilleryRequest }
+                ]
+            };
+            
+            return finalScenario;
+        }
+    </script>
+</body>
+</html>
