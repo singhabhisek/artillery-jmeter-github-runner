@@ -3,7 +3,7 @@
  * UNIVERSAL ARTILLERY UTILS + AWS SIGV4 SIGNER (CSV-aware)
  * ============================================================
  * Provides:
- *   ✅ AWS Signature V4 signing for API Gateway
+ *   ✅ AWS Signature V4 signing for API Gateway (optional via tag)
  *   ✅ File-based response/error/debug logging
  *   ✅ CSV data loading utility
  *   ✅ Random data helpers
@@ -44,15 +44,12 @@ function logToFile(file, message) {
 // -------------------------------
 // Utility Functions
 // -------------------------------
-
-/** Generate random number with specific length */
 function randomNumber(length = 6) {
   const min = Math.pow(10, length - 1);
   const max = Math.pow(10, length) - 1;
   return Math.floor(min + Math.random() * (max - min));
 }
 
-/** Generate random date between two years (YYYY-MM-DD) */
 function randomDate(startYear = 2000, endYear = 2025) {
   const start = new Date(startYear, 0, 1);
   const end = new Date(endYear, 11, 31);
@@ -60,11 +57,6 @@ function randomDate(startYear = 2000, endYear = 2025) {
   return date.toISOString().split("T")[0];
 }
 
-/**
- * Load CSV data file (synchronously for small files)
- * @param {string} filePath - path to CSV (relative to Artillery YAML)
- * @returns {Array<Object>}
- */
 function loadCsvData(filePath) {
   try {
     const csvContent = fs.readFileSync(filePath, "utf8");
@@ -80,13 +72,73 @@ function loadCsvData(filePath) {
   }
 }
 
+// // -------------------------------
+// // AWS SigV4 Signing Hook
+// // -------------------------------
+// function signRequest(requestParams, context, ee, next) {
+//   try {
+//     // Only sign if the YAML tag requiresAwsSigV4=true
+//     if (!requestParams.tags || !requestParams.tags.includes("requiresAwsSigV4")) {
+//       return next();
+//     }
+
+//    // const requestPath = url.parse(requestParams.url).path;
+//    // const body = requestParams.json ? JSON.stringify(requestParams.json) : undefined;
+
+//     const options = {
+//       host: TARGET_HOST,
+//       method: requestParams.method || "GET",
+//       path: requestPath,
+//       service: SERVICE_NAME,
+//       region: REGION,
+//       headers: requestParams.headers || {},
+//       body: body,
+//     };
+
+//     // Use generic AWS credentials from environment
+//     const awsCreds = {
+//       accessKeyId: process.env.APP_AWS_KEY,
+//       secretAccessKey: process.env.APP_AWS_SECRET,
+//       sessionToken: process.env.APP_AWS_SESSION || undefined,
+//     };
+
+//     const signed = aws4.sign(options, awsCreds);
+//     requestParams.headers = signed.headers;
+//     if (body) requestParams.body = body;
+
+//     logToFile(
+//       DEBUG_LOG,
+//       `Signed ${options.method} ${options.path} for ${TARGET_HOST} (${REGION})`
+//     );
+//     return next();
+//   } catch (err) {
+//     logToFile(ERROR_LOG, `SigV4 Signing Failed: ${err.message}`);
+//     return next(err);
+//   }
+// }
+
+
+
+
+///////////////////////
+// ALTERNATE AWS4
+
 // -------------------------------
 // AWS SigV4 Signing Hook
 // -------------------------------
 function signRequest(requestParams, context, ee, next) {
   try {
     const requestPath = url.parse(requestParams.url).path;
-    const body = requestParams.json ? JSON.stringify(requestParams.json) : undefined;
+
+    // Determine body for signing
+    let body;
+    if (requestParams.json) {
+      body = JSON.stringify(requestParams.json);
+      // Ensure Artillery sends JSON string in body
+      requestParams.body = body;
+    } else if (requestParams.body) {
+      body = typeof requestParams.body === "string" ? requestParams.body : JSON.stringify(requestParams.body);
+    }
 
     const options = {
       host: TARGET_HOST,
@@ -98,17 +150,30 @@ function signRequest(requestParams, context, ee, next) {
       body: body,
     };
 
-    const signed = aws4.sign(options);
-    requestParams.headers = signed.headers;
-    if (body) requestParams.body = body;
+    // AWS credentials from environment
+    const awsCreds = {
+      accessKeyId: process.env.APP_AWS_KEY,
+      secretAccessKey: process.env.APP_AWS_SECRET,
+      sessionToken: process.env.APP_AWS_SESSION || undefined,
+    };
 
-    logToFile(DEBUG_LOG, `Signed ${options.method} ${options.path} for ${TARGET_HOST} (${REGION})`);
+    const signed = aws4.sign(options, awsCreds);
+    requestParams.headers = signed.headers;
+
+    logToFile(
+      DEBUG_LOG,
+      `Signed ${options.method} ${options.path} for ${TARGET_HOST} (${REGION})`
+    );
     return next();
   } catch (err) {
     logToFile(ERROR_LOG, `SigV4 Signing Failed: ${err.message}`);
     return next(err);
   }
 }
+
+
+//
+
 
 // -------------------------------
 // Response Hook: Log Success & Failures
