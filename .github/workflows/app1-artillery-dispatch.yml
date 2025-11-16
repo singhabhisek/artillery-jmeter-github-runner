@@ -1,0 +1,99 @@
+# .github/workflows/app1-dispatcher.yml
+
+name: "App1 Load Test Dispatcher"
+
+# ============================================================
+# Trigger: Manual dispatch via GitHub UI for App1
+# This is the user-facing file.
+# ============================================================
+on:
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: "Choose test type: 'load' to run tests, or 'cleanup' to delete old reports/artifacts"
+        required: true
+        type: choice
+        options:
+          - load
+          - cleanup
+
+      environment_name:
+        description: "Select environment (test or prod)"
+        required: true
+        type: choice
+        options:
+          - test
+          - prod
+
+      runners_to_use:
+        description: "Number of parallel runners to use (1–4)"
+        required: true
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+          
+      # Provide an App1-specific default scenario file
+      scenario_file:
+        description: "YAML file(s) for Artillery scenario"
+        required: true
+        default: "app1_main_scenario.yml" 
+        type: string
+
+      test_name:
+        description: "Optional test name (blank = auto-generated)"
+        required: false
+        default: ""
+        type: string
+        
+      run_name:
+        description: "Optional run name (blank = auto-generated)"
+        required: false
+        default: ""
+        type: string
+        
+      monitor_system:
+        description: "Enable runner CPU/memory monitoring during tests?"
+        required: false
+        type: string
+        default: "false"
+        
+      cleanup_days:
+        description: "Delete reports/artifacts older than X days (used in cleanup mode)"
+        required: false
+        type: string
+        default: "7"
+        
+      print_machine_info:
+        description: "Print machine details before running?"
+        required: false
+        type: string
+        default: "false"
+
+# ============================================================
+# JOB: Call the Reusable Framework Workflow
+# ============================================================
+jobs:
+  run_app1_test:
+    name: Call Artillery Framework for App1
+    
+    # 1. Specify the path to your reusable framework file
+    uses: ./.github/workflows/artillery-framework.yml 
+    
+    # 2. Map all inputs from this dispatcher to the framework
+    with:
+      test_type: ${{ github.event.inputs.test_type }}
+      environment_name: ${{ github.event.inputs.environment_name }}
+      
+      # *** THIS IS THE CRITICAL LINE: HARDCODING THE APP NAME ***
+      app_name: "app1" 
+      
+      runners_to_use: ${{ github.event.inputs.runners_to_use }}
+      scenario_file: ${{ github.event.inputs.scenario_file }}
+      test_name: ${{ github.event.inputs.test_name }}
+      run_name: ${{ github.event.inputs.run_name }}
+      monitor_system: ${{ github.event.inputs.monitor_system }}
+      cleanup_days: ${{ github.event.inputs.cleanup_days }}
+      print_machine_info: ${{ github.event.inputs.print_machine_info }}
