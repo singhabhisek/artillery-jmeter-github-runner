@@ -248,3 +248,102 @@ jobs:
           name: artillery-report-${{ github.event.inputs.app }}-${{ github.event.inputs.env }}
           path: ./reports/${{ github.event.inputs.app }}_${{ github.event.inputs.env }}.zip
 
+
+
+==========================================================
+
+name: Run JMeter Load Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'App to test'
+        required: true
+      env:
+        description: 'Environment'
+        required: true
+
+jobs:
+  jmeter-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set inputs
+        run: |
+          echo "APP=${{ github.event.inputs.app }}" >> $GITHUB_ENV
+          echo "ENV=${{ github.event.inputs.env }}" >> $GITHUB_ENV
+
+      - name: Export App/Env Secrets Dynamically
+        run: |
+          APP="${{ github.event.inputs.app }}"
+          ENV="${{ github.event.inputs.env }}"
+
+          echo "Looking for secrets for $APP in $ENV..."
+
+          # Loop through all secrets
+          for SECRET_NAME in $(compgen -v | grep "^${APP}_${ENV}_"); do
+              if [[ -n "${!SECRET_NAME}" ]]; then
+                  VAR_NAME="${SECRET_NAME#${APP}_${ENV}_}"
+                  echo "$VAR_NAME=${!SECRET_NAME}" >> $GITHUB_ENV
+                  echo "Loaded secret $VAR_NAME"
+              fi
+          done
+
+      - name: Export App/Env Non-Sensitive Variables
+        run: |
+          APP="${{ github.event.inputs.app }}"
+          ENV="${{ github.event.inputs.env }}"
+
+          # Example: Variables stored in repo secrets or repo vars
+          VAR_LIST=(BASE_URL TIMEOUT RETRIES)  # define repo variables you may use
+          for var in "${VAR_LIST[@]}"; do
+              VAR_NAME="${APP}_${ENV}_${var}"
+              if [ -n "${{ secrets[VAR_NAME] }}" ]; then
+                  echo "$var=${{ secrets[VAR_NAME] }}" >> $GITHUB_ENV
+                  echo "Loaded repo variable $var"
+              fi
+          done
+
+      - name: Install JMeter
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-11-jdk unzip wget
+          wget https://downloads.apache.org//jmeter/binaries/apache-jmeter-5.6.3.zip -O jmeter.zip
+          unzip -q jmeter.zip -d $HOME
+          echo "$HOME/apache-jmeter-5.6.3/bin" >> $GITHUB_PATH
+
+      - name: Run JMeter Test
+        run: |
+          REPORT_DIR="./reports/${{ github.event.inputs.app }}_${{ github.event.inputs.env }}"
+          mkdir -p "$REPORT_DIR"
+
+          # Build -J property string from env variables
+          JMETER_PROPS=""
+          for var in $(compgen -v); do
+            # Exclude system envs and only pick variables we exported
+            if [[ "$var" != "GITHUB_"* && "$var" != "APP" && "$var" != "ENV" ]]; then
+              JMETER_PROPS="$JMETER_PROPS -J$var=${!var}"
+            fi
+          done
+
+          echo "Passing variables to JMeter: $JMETER_PROPS"
+
+          jmeter -n -t jmeter/${{ github.event.inputs.app }}.jmx -l $REPORT_DIR/results.jtl $JMETER_PROPS
+
+      - name: Zip JMeter Report
+        run: |
+          REPORT_DIR="./reports/${{ github.event.inputs.app }}_${{ github.event.inputs.env }}"
+          ZIP_FILE="./reports/${{ github.event.inputs.app }}_${{ github.event.inputs.env }}.zip"
+          cd "$REPORT_DIR"
+          zip -r "$ZIP_FILE" .
+          echo "Zipped report at $ZIP_FILE"
+
+      - name: Upload JMeter Report Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: jmeter-report-${{ github.event.inputs.app }}-${{ github.event.inputs.env }}
+          path: ./reports/${{ github.event.inputs.app }}_${{ github.event.inputs.env }}.zip
