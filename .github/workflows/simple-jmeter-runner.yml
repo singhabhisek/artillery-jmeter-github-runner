@@ -1,4 +1,4 @@
-name: JMeter Load Test (Multi-Runner)
+name: JMeter Load Test (Simple Multi-Runner)
 
 on:
   workflow_dispatch:
