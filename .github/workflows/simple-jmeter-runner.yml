@@ -1,0 +1,156 @@
+name: JMeter Load Test (Multi-Runner)
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'Application Name'
+        required: true
+        default: 'my-app'
+      jmx_file:
+        description: 'JMeter test file (.jmx)'
+        required: true
+      test_type:
+        description: 'Type of test: load or smoke'
+        required: true
+        default: 'load'
+      environment:
+        description: 'Environment name (dev, qa, prod)'
+        required: true
+        default: 'dev'
+      runners_to_use:
+        description: 'Number of parallel runners to use'
+        required: true
+        default: '1'
+      test_name:
+        description: 'Optional custom test name'
+        required: false
+      monitor_system:
+        description: 'Enable system monitoring'
+        required: false
+        default: 'false'
+
+env:
+  JMETER_VERSION: '5.6.2'
+  SCRIPTS_DIR: './scripts'
+  REPORT_DIR: './reports'
+  JMETER_HOME: '${{ runner.temp }}/apache-jmeter-${{ env.JMETER_VERSION }}'
+
+jobs:
+  set-test-name:
+    runs-on: ubuntu-latest
+    outputs:
+      final_test_name: ${{ steps.set-name.outputs.final_test_name }}
+    steps:
+      - name: Set final test name
+        id: set-name
+        run: |
+          # If test_name input is empty, generate one with timestamp
+          if [ -z "${{ github.event.inputs.test_name }}" ]; then
+            TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+            echo "final_test_name=jmeter-test-$TIMESTAMP" >> $GITHUB_OUTPUT
+          else
+            echo "final_test_name=${{ github.event.inputs.test_name }}" >> $GITHUB_OUTPUT
+          fi
+
+  run-jmeter:
+    needs: set-test-name
+    if: ${{ github.event.inputs.test_type == 'load' }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        runner_index: [1,2,3,4,5] # maximum 5 runners
+    steps:
+      - name: Skip unused runners
+        if: ${{ matrix.runner_index > fromJSON(github.event.inputs.runners_to_use) }}
+        run: |
+          echo "Runner ${{ matrix.runner_index }} is not used, exiting."
+          exit 0
+
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Load .env variables
+        if: exists('.env')
+        run: |
+          export $(grep -v '^#' .env | xargs)
+
+      - name: Install JMeter
+        run: |
+          wget https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${{ env.JMETER_VERSION }}.tgz
+          tar -xzf apache-jmeter-${{ env.JMETER_VERSION }}.tgz -C ${{ runner.temp }}
+
+      - name: Install JMeter Plugins
+        run: |
+          wget https://jmeter-plugins.org/get/
+          sh ${{ env.JMETER_HOME }}/bin/PluginsManagerCMD.sh install "jpgc-cmdrunner,jpgc-ultimatethreadgroup,jpgc-mergeresults"
+
+      - name: Start system monitoring (optional)
+        if: ${{ github.event.inputs.monitor_system == 'true' }}
+        run: |
+          # Start top command in background and store PID
+          top -b -d 5 > /tmp/top.log &
+          echo $! > /tmp/monitor_pid.txt
+
+      - name: Run JMeter Test
+        run: |
+          mkdir -p ${{ env.REPORT_DIR }}
+          # Run JMeter in non-GUI mode, pass environment and testName as properties
+          ${{ env.JMETER_HOME }}/bin/jmeter -n \
+            -t ${{ github.event.inputs.jmx_file }} \
+            -l ${{ env.REPORT_DIR }}/runner${{ matrix.runner_index }}.jtl \
+            -Jenv=${{ github.event.inputs.environment }} \
+            -JtestName=${{ needs.set-test-name.outputs.final_test_name }}
+
+      - name: Stop system monitoring
+        if: ${{ github.event.inputs.monitor_system == 'true' }}
+        run: |
+          kill $(cat /tmp/monitor_pid.txt) || true
+
+      - name: Upload JTL artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: runner${{ matrix.runner_index }}-jtl
+          path: ${{ env.REPORT_DIR }}/runner${{ matrix.runner_index }}.jtl
+
+  aggregate-results:
+    needs: run-jmeter
+    if: ${{ fromJSON(github.event.inputs.runners_to_use) > 1 }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download runner artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: '**-jtl'
+          path: ./artifacts
+
+      - name: Merge JTL files (simple concatenation)
+        run: |
+          MERGED_JTL=./artifacts/merged.jtl
+          mkdir -p $(dirname $MERGED_JTL)
+          # Remove existing merged file if any
+          [ -f "$MERGED_JTL" ] && rm "$MERGED_JTL"
+          FIRST_FILE=true
+          for file in ./artifacts/*.jtl; do
+            if [ "$FIRST_FILE" = true ]; then
+              # Include header from the first file
+              cat "$file" >> "$MERGED_JTL"
+              FIRST_FILE=false
+            else
+              # Skip header line for subsequent files
+              tail -n +2 "$file" >> "$MERGED_JTL"
+            fi
+          done
+
+      - name: Generate HTML Report
+        run: |
+          ${{ env.JMETER_HOME }}/bin/jmeter -g ./artifacts/merged.jtl -o ${{ env.REPORT_DIR }}/html
+
+      - name: Upload HTML Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: jmeter-html-report
+          path: ${{ env.REPORT_DIR }}/html
