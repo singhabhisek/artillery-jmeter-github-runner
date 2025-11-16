@@ -1,0 +1,250 @@
+/**
+ * ============================================================
+ * Artillery Processors + AWS SigV4 Signing + CSV Utilities
+ * ============================================================
+ */
+
+const fs = require("fs");
+const path = require("path");
+const url = require("url");
+const aws4 = require("aws4");
+const { parse } = require("csv-parse/sync");
+
+// -------------------------------
+// ENVIRONMENT CONFIG
+// -------------------------------
+const SERVICE_NAME = "execute-api";
+const REGION = process.env.AWS_REGION;
+const TARGET_HOST = process.env.TARGET_HOST || "your-api.execute-api.region.amazonaws.com";
+const LOG_DIR = path.resolve("./artillery-logs");
+
+// Ensure logs directory exists
+if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
+
+// Common log files
+const RESPONSE_LOG = path.join(LOG_DIR, "responses.log");
+const ERROR_LOG = path.join(LOG_DIR, "errors.log");
+const DEBUG_LOG = path.join(LOG_DIR, "debug.log");
+
+// -------------------------------
+// Helper: Append line to log file
+// -------------------------------
+function logToFile(file, message) {
+  const timestamp = new Date().toISOString();
+  fs.appendFileSync(file, `[${timestamp}] ${message}\n`);
+}
+
+// -------------------------------
+// Utility: CSV Loader
+// -------------------------------
+function loadCsvData(filePath) {
+  try {
+    const csvContent = fs.readFileSync(filePath, "utf8");
+    const records = parse(csvContent, { columns: true, skip_empty_lines: true });
+    logToFile(DEBUG_LOG, `Loaded ${records.length} records from CSV: ${filePath}`);
+    return records;
+  } catch (err) {
+    logToFile(ERROR_LOG, `CSV Load Failed for ${filePath}: ${err.message}`);
+    return [];
+  }
+}
+
+// -------------------------------
+// Utility: Random helpers
+// -------------------------------
+function randomNumber(length = 6) {
+  const min = Math.pow(10, length - 1);
+  const max = Math.pow(10, length) - 1;
+  return Math.floor(min + Math.random() * (max - min));
+}
+
+function randomDate(startYear = 2000, endYear = 2025) {
+  const start = new Date(startYear, 0, 1);
+  const end = new Date(endYear, 11, 31);
+  const date = new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
+  return date.toISOString().split("T")[0];
+}
+
+// -------------------------------
+// AWS SigV4 Signing Hook
+// -------------------------------
+function signRequest(requestParams, context, ee, next) {
+  try {
+    const requestPath = url.parse(requestParams.url).path;
+
+    // Determine body for signing
+    let body;
+    if (requestParams.json) {
+      body = JSON.stringify(requestParams.json);
+      requestParams.body = body; // Ensure Artillery sends it
+    } else if (requestParams.body) {
+      body = typeof requestParams.body === "string" ? requestParams.body : JSON.stringify(requestParams.body);
+    }
+
+    const options = {
+      host: TARGET_HOST,
+      method: requestParams.method || "GET",
+      path: requestPath,
+      service: SERVICE_NAME,
+      region: REGION,
+      headers: requestParams.headers || {},
+      body: body,
+    };
+
+    const awsCreds = {
+      accessKeyId: process.env.APP_AWS_KEY,
+      secretAccessKey: process.env.APP_AWS_SECRET,
+      sessionToken: process.env.APP_AWS_SESSION || undefined,
+    };
+
+    const signed = aws4.sign(options, awsCreds);
+    requestParams.headers = signed.headers;
+
+    logToFile(DEBUG_LOG, `Signed ${options.method} ${options.path} for ${TARGET_HOST} (${REGION})`);
+    return next();
+  } catch (err) {
+    logToFile(ERROR_LOG, `SigV4 Signing Failed: ${err.message}`);
+    return next(err);
+  }
+}
+
+// -------------------------------
+// After Response Hook
+// -------------------------------
+function afterResponse(requestParams, response, context, ee, next) {
+  let bodyText;
+  if (response && response.body) {
+    bodyText = Buffer.isBuffer(response.body) ? response.body.toString("utf-8") : typeof response.body === "string" ? response.body : JSON.stringify(response.body, null, 2);
+  } else {
+    bodyText = "<no body>";
+  }
+
+  logToFile(RESPONSE_LOG, `${requestParams.method} ${requestParams.url} => ${response ? response.statusCode : "NO RESPONSE"} | Body: ${bodyText}`);
+  return next();
+}
+
+// -------------------------------
+// Export all for YAML usage
+// -------------------------------
+module.exports = {
+  signRequest,
+  afterResponse,
+  loadCsvData,
+  randomNumber,
+  randomDate,
+};
+
+
+
+
+
+##############################################################
+
+config:
+  target: "https://your-api.execute-api.region.amazonaws.com"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+  processor: "./processors.js"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+scenarios:
+  - name: "POST with AWS SigV4"
+    flow:
+      - post:
+          url: "/resource/aws"
+          name: "POST with AWS SigV4"
+          processor: "signRequest"   # <-- this triggers AWS signing
+          headers:
+            Referred: "chrome"
+          body:
+            input:
+              data: "Example data for POST"
+              result: "i am result"
+              id: 1
+            roll: "123"
+          beforeRequest: "beforeJson"
+          afterResponse: "afterResponse"
+          expect:
+            - statusCode: 200
+          capture:
+            - json: "$"
+              as: "response"
+          log: "Response: {{ session_id }} for user {{ user_id }}"
+
+
+#########################################
+name: Run Artillery Load Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'App to test'
+        required: true
+      env:
+        description: 'Environment'
+        required: true
+
+jobs:
+  artillery-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set inputs
+        run: |
+          echo "APP=${{ github.event.inputs.app }}" >> $GITHUB_ENV
+          echo "ENV=${{ github.event.inputs.env }}" >> $GITHUB_ENV
+
+      - name: Export App/Env Secrets Dynamically
+        run: |
+          APP="${{ github.event.inputs.app }}"
+          ENV="${{ github.event.inputs.env }}"
+
+          echo "Looking for secrets for $APP in $ENV..."
+
+          POSSIBLE_SECRETS=(API_KEY BEARER_TOKEN AUTHORIZATION X_API_KEY AWS_ACCESS_KEY AWS_SECRET_KEY AWS_SESSION_TOKEN)
+
+          for key in "${POSSIBLE_SECRETS[@]}"; do
+              SECRET_VAR="${APP}_${ENV}_${key}"
+              if [ -n "${{ secrets[SECRET_VAR] }}" ]; then
+                  echo "$key=${{ secrets[SECRET_VAR] }}" >> $GITHUB_ENV
+                  echo "Loaded $key"
+              else
+                  echo "$SECRET_VAR not found, skipping..."
+              fi
+          done
+
+      - name: Install Artillery 2.0.21
+        run: npm install -g artillery@2.0.21
+
+      - name: Run Artillery Test
+        run: |
+          REPORT_DIR="./reports/${{ github.event.inputs.app }}_${{ github.event.inputs.env }}"
+          mkdir -p $REPORT_DIR
+          npx artillery run ./artillery/${{ github.event.inputs.app }}.yml -o $REPORT_DIR/report.json
+
+      - name: Generate Artillery HTML Report
+        run: |
+          REPORT_DIR="./reports/${{ github.event.inputs.app }}_${{ github.event.inputs.env }}"
+          npx artillery report $REPORT_DIR/report.json -o $REPORT_DIR/report.html
+
+      - name: Zip Report
+        run: |
+          REPORT_DIR="./reports/${{ github.event.inputs.app }}_${{ github.event.inputs.env }}"
+          ZIP_FILE="./reports/${{ github.event.inputs.app }}_${{ github.event.inputs.env }}.zip"
+          cd $REPORT_DIR
+          zip -r $ZIP_FILE .
+          echo "Zipped report at $ZIP_FILE"
+
+      - name: Upload Artillery Report Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: artillery-report-${{ github.event.inputs.app }}-${{ github.event.inputs.env }}
+          path: ./reports/${{ github.event.inputs.app }}_${{ github.event.inputs.env }}.zip
+
