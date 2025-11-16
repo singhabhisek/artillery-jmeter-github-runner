@@ -34,9 +34,9 @@ env:
   JMETER_VERSION: '5.6.2'
   SCRIPTS_DIR: './scripts'
   REPORT_DIR: './reports'
-  JMETER_HOME: '${{ runner.temp }}/apache-jmeter-${{ env.JMETER_VERSION }}'
 
 jobs:
+  # Step to determine the final test name
   set-test-name:
     runs-on: ubuntu-latest
     outputs:
@@ -45,14 +45,13 @@ jobs:
       - name: Set final test name
         id: set-name
         run: |
-          # If test_name input is empty, generate one with timestamp
           if [ -z "${{ github.event.inputs.test_name }}" ]; then
             TIMESTAMP=$(date +%Y%m%d-%H%M%S)
             echo "final_test_name=jmeter-test-$TIMESTAMP" >> $GITHUB_OUTPUT
           else
             echo "final_test_name=${{ github.event.inputs.test_name }}" >> $GITHUB_OUTPUT
-          fi
 
+  # Main job to run JMeter tests in parallel
   run-jmeter:
     needs: set-test-name
     if: ${{ github.event.inputs.test_type == 'load' }}
@@ -60,7 +59,12 @@ jobs:
     strategy:
       matrix:
         runner_index: [1,2,3,4,5] # maximum 5 runners
+    env:
+      JMETER_HOME: ${{ runner.temp }}/apache-jmeter-${{ env.JMETER_VERSION }}
+      REPORT_DIR: ./reports
+      SCRIPTS_DIR: ./scripts
     steps:
+      # Skip runners that exceed the requested count
       - name: Skip unused runners
         if: ${{ matrix.runner_index > fromJSON(github.event.inputs.runners_to_use) }}
         run: |
@@ -70,49 +74,55 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      # Load environment variables from .env if it exists
       - name: Load .env variables
         if: exists('.env')
         run: |
           export $(grep -v '^#' .env | xargs)
 
+      # Install JMeter
       - name: Install JMeter
         run: |
           wget https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${{ env.JMETER_VERSION }}.tgz
           tar -xzf apache-jmeter-${{ env.JMETER_VERSION }}.tgz -C ${{ runner.temp }}
 
+      # Install JMeter Plugins
       - name: Install JMeter Plugins
         run: |
           wget https://jmeter-plugins.org/get/
           sh ${{ env.JMETER_HOME }}/bin/PluginsManagerCMD.sh install "jpgc-cmdrunner,jpgc-ultimatethreadgroup,jpgc-mergeresults"
 
+      # Optional system monitoring
       - name: Start system monitoring (optional)
         if: ${{ github.event.inputs.monitor_system == 'true' }}
         run: |
-          # Start top command in background and store PID
           top -b -d 5 > /tmp/top.log &
           echo $! > /tmp/monitor_pid.txt
 
+      # Run the JMeter test
       - name: Run JMeter Test
         run: |
           mkdir -p ${{ env.REPORT_DIR }}
-          # Run JMeter in non-GUI mode, pass environment and testName as properties
           ${{ env.JMETER_HOME }}/bin/jmeter -n \
             -t ${{ github.event.inputs.jmx_file }} \
             -l ${{ env.REPORT_DIR }}/runner${{ matrix.runner_index }}.jtl \
             -Jenv=${{ github.event.inputs.environment }} \
             -JtestName=${{ needs.set-test-name.outputs.final_test_name }}
 
+      # Stop system monitoring if enabled
       - name: Stop system monitoring
         if: ${{ github.event.inputs.monitor_system == 'true' }}
         run: |
           kill $(cat /tmp/monitor_pid.txt) || true
 
+      # Upload JTL artifact
       - name: Upload JTL artifact
         uses: actions/upload-artifact@v3
         with:
           name: runner${{ matrix.runner_index }}-jtl
           path: ${{ env.REPORT_DIR }}/runner${{ matrix.runner_index }}.jtl
 
+  # Aggregate results if multiple runners were used
   aggregate-results:
     needs: run-jmeter
     if: ${{ fromJSON(github.event.inputs.runners_to_use) > 1 }}
@@ -121,34 +131,34 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      # Download all runner JTL artifacts
       - name: Download runner artifacts
         uses: actions/download-artifact@v3
         with:
           name: '**-jtl'
           path: ./artifacts
 
-      - name: Merge JTL files (simple concatenation)
+      # Merge JTL files using normal file concatenation
+      - name: Merge JTL files (normal concatenation)
         run: |
           MERGED_JTL=./artifacts/merged.jtl
-          mkdir -p $(dirname $MERGED_JTL)
-          # Remove existing merged file if any
-          [ -f "$MERGED_JTL" ] && rm "$MERGED_JTL"
-          FIRST_FILE=true
-          for file in ./artifacts/*.jtl; do
-            if [ "$FIRST_FILE" = true ]; then
-              # Include header from the first file
-              cat "$file" >> "$MERGED_JTL"
-              FIRST_FILE=false
+          FIRST_LINE=1
+          > $MERGED_JTL
+          for f in ./artifacts/*.jtl; do
+            if [ $FIRST_LINE -eq 1 ]; then
+              cat "$f" >> $MERGED_JTL
+              FIRST_LINE=0
             else
-              # Skip header line for subsequent files
-              tail -n +2 "$file" >> "$MERGED_JTL"
+              tail -n +2 "$f" >> $MERGED_JTL
             fi
           done
 
+      # Generate HTML report from merged JTL
       - name: Generate HTML Report
         run: |
           ${{ env.JMETER_HOME }}/bin/jmeter -g ./artifacts/merged.jtl -o ${{ env.REPORT_DIR }}/html
 
+      # Upload HTML report artifact
       - name: Upload HTML Report
         uses: actions/upload-artifact@v3
         with:
