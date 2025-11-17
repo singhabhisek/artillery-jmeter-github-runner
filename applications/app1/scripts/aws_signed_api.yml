@@ -12,7 +12,8 @@ config:
       name: "Signed GET & POST CSV Test"
 
   plugins:
-    metrics-by-endpoint: {}
+    metrics-by-endpoint:
+      useOnlyRequestNames: true
 
   # ✅ Add service-level assertions
   ensure:
