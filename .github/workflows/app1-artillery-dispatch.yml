@@ -1,6 +1,6 @@
 # .github/workflows/app1-dispatcher.yml
 
-name: "App1 Load Test Dispatcher"
+name: "App1 Artillery Load Test Dispatcher"
 
 # ============================================================
 # Trigger: Manual dispatch via GitHub UI for App1
