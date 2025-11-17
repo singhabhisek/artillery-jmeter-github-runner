@@ -9,6 +9,15 @@ name: "App1 Artillery Load Test Dispatcher"
 on:
   workflow_dispatch:
     inputs:
+      app_name:
+        description: "Application name (e.g., app1, app2)"
+        required: true
+        type: choice
+        options:
+          - app1
+          - app2
+        default: "app1" # Tailored default
+        
       test_type:
         description: "Choose test type: 'load' to run tests, or 'cleanup' to delete old reports/artifacts"
         required: true
@@ -88,7 +97,7 @@ jobs:
       environment_name: ${{ github.event.inputs.environment_name }}
       
       # *** THIS IS THE CRITICAL LINE: HARDCODING THE APP NAME ***
-      app_name: "app1" 
+      app_name: ${{ github.event.inputs.app_name }}
       
       runners_to_use: ${{ github.event.inputs.runners_to_use }}
       scenario_file: ${{ github.event.inputs.scenario_file }}
