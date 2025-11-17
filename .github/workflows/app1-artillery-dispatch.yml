@@ -48,7 +48,7 @@ on:
       scenario_file:
         description: "YAML file(s) for Artillery scenario"
         required: true
-        default: "app1_main_scenario.yml" 
+        default: "aws_api.yml,aws_signed_api.yml" 
         type: string
 
       test_name:
