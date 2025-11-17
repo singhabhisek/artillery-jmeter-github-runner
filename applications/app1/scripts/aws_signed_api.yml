@@ -10,7 +10,9 @@ config:
     - duration: 60
       arrivalRate: 2
       name: "Signed GET & POST CSV Test"
-
+  tls:
+    rejectUnauthorized: false
+    
   plugins:
     metrics-by-endpoint:
       useOnlyRequestNames: true
