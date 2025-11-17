@@ -286,12 +286,12 @@ jobs:
         shell: bash
         env:
           # Use vars context to retrieve dynamic variables based on app_name input
-          APP_BASE_URL: ${{ vars[format('{0}_BASE_URL', inputs.app_name)] }}
-          APP_TARGET_HOST: ${{ vars[format('{0}_TARGET_HOST', inputs.app_name)] }}
-          APP_REGION: ${{ vars[format('{0}_REGION', inputs.app_name)] }}
+          APP_BASE_URL: ${{ vars[format('{0}_{1}_BASE_URL', inputs.app_name, inputs.environment_name)] }}
+          APP_TARGET_HOST: ${{ vars[format('{0}_{1}_TARGET_HOST', inputs.app_name, inputs.environment_name)] }}
+          APP_REGION: ${{ vars[format('{0}_{1}_REGION', inputs.app_name, inputs.environment_name)] }}
           # Use secrets context to retrieve dynamic secrets
-          APP_ACCESS_KEY: ${{ secrets[format('{0}_ACCESS_KEY', inputs.app_name)] }}
-          APP_SECRET_KEY: ${{ secrets[format('{0}_SECRET_KEY', inputs.app_name)] }}
+          APP_ACCESS_KEY: ${{ secrets[format('{0}_{1}_ACCESS_KEY', inputs.app_name, inputs.environment_name)] }}
+          APP_SECRET_KEY: ${{ secrets[format('{0}_{1}_SECRET_KEY', inputs.app_name, inputs.environment_name)] }}
           APP_UPPER: ${{ inputs.app_name }} # Pass app_name to the shell
         run: |
           # Convert app_name input to uppercase (e.g., "app1" -> "APP1")
