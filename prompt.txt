@@ -1,0 +1,45 @@
+"I have a single-file HTML/JavaScript application that converts a Postman Collection JSON into an Artillery load testing YAML script. I need to upgrade this application to support comprehensive parameterization and dynamic CSV file generation.
+
+Goal: Integrate a parameter configuration table that allows users to map specific values in their Postman requests (URL Query, Header, JSON Body Path) to Artillery variables ({{ var_name }}), and automatically generate a corresponding CSV data file (parameters_{scenario_name}.csv) for each selected request when downloading a ZIP archive.
+
+Specific Tasks (using the provided HTML/JS code as the starting point):
+
+Add a New UI Section (Step 2): Insert a new section named "2. Parameterization & CSV Config" above the "JSON Body Format" section. This must include:
+
+A dynamic HTML table where users can define rules (Location: url_query, body_json, header; Key/Path; Artillery Variable Name).
+
+Functions (addParamRow, removeParamRow, initializeParamConfig) to manage this table and store the configuration in a global array (parameterConfigs).
+
+Add JSON Path Utilities: Implement JavaScript functions getJsonValueByPath(obj, path) and setJsonValueByPath(obj, path, value) to support dot-notation pathing (e.g., user.id) for body JSON parameterization.
+
+Implement Parameter Replacement Logic: Create a new helper function, applyCsvReplacement(value, location, key, paramCollector), which:
+
+Checks the parameterConfigs for a match.
+
+If matched, collects the original value into the passed-in paramCollector object for CSV generation.
+
+Replaces the original value with the Artillery variable reference ({{ var_name }}) and returns it.
+
+Modify convertRequestToScenario: Call the new applyCsvReplacement function to parameterize values in:
+
+URL Query parameters.
+
+Request Headers.
+
+JSON Body fields (must parse the raw body into an object, apply replacement using the path utilities, and use the json: {} flow structure).
+
+Modify Download Logic for Per-File CSV:
+
+Update generateSingleYaml to initialize and pass a collectedParamData object to convertRequestToScenario to gather all sample values across all selected requests.
+
+Update downloadAsZip to call a new generateIndividualYaml(reqData, globalCollectedParamData) function for each request.
+
+The generateIndividualYaml function must:
+
+Determine which parameters that specific request uses.
+
+Generate a local parameters_{scenario_name}.csv file containing only those relevant columns/values using a new generateCsv(data) function.
+
+Update the config.payload.path in the generated YAML to reference this local CSV file path (../data/parameters_{scenario_name}.csv).
+
+Ensure the downloaded ZIP includes a /data/ folder for the CSV files and a /scenarios/ folder for the YAML files."
