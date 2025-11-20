@@ -1,3 +1,20 @@
+**Generate an interactive HTML/JavaScript web application that serves as an enhanced Postman Collection to Artillery Load Testing script converter.**
+
+The application must include a configuration step to define **dynamic parameter substitution rules** and adhere to the following logic:
+
+1.  **Parameter Configuration Table:** Implement a dynamic table allowing users to map a **Postman Key/Path** (e.g., `userId`, `data.price`, or `X-Token`) to an **Artillery Variable Name** (e.g., `target_user_id`). This must support three locations: **URL Query**, **JSON Body (dot notation path)**, and **Header**.
+2.  **Dynamic Substitution:** During the conversion process (`convertRequestToScenario`), iterate through all selected requests and perform substitution:
+    * If a value in the request (URL, Header, or JSON Body) matches a defined rule, replace the original value with the Artillery variable reference (`{{ target_user_id }}`).
+3.  **CSV Data Collection:** Simultaneously, the tool must **collect the original hardcoded value** for every instance of a successful substitution and store it under its corresponding Artillery Variable Name.
+4.  **Output Generation (Key Feature):**
+    * When generating a single YAML, include the `payload` configuration block in `config` pointing to `data/parameters.csv`, listing all unique collected variable names as `fields`.
+    * When generating a ZIP, create **individual YAML files** in a `scenarios/` folder and a corresponding **CSV data file** (`data/parameters_{name}.csv`) for each scenario that uses parameters. The YAML's `payload` block must use the relative path `../data/parameters_{name}.csv`.
+5.  **Refinement:** Ensure the generated `config.variables` block explicitly **excludes** the `BASE_URL` variable, as it is already defined in `config.target`.
+
+The final output must be a single, fully functional HTML file ready to run locally in a browser.
+
+==========
+
 "I have a single-file HTML/JavaScript application that converts a Postman Collection JSON into an Artillery load testing YAML script. I need to upgrade this application to support comprehensive parameterization and dynamic CSV file generation.
 
 Goal: Integrate a parameter configuration table that allows users to map specific values in their Postman requests (URL Query, Header, JSON Body Path) to Artillery variables ({{ var_name }}), and automatically generate a corresponding CSV data file (parameters_{scenario_name}.csv) for each selected request when downloading a ZIP archive.
